@@ -39,6 +39,18 @@ public final class MainWindowController: NSWindowController {
     // observing it (rather than hooking each navigation path separately)
     // covers both.
     private var quickLookIndexObservation: NSKeyValueObservation?
+    // QLPreviewPanel.shared() apparently isn't a cheap accessor to call
+    // repeatedly (it was being invoked on every single click via the
+    // selection-change path just to check panel.isVisible, which made
+    // ordinary icon selection feel delayed by up to ~1s). It's a genuine
+    // singleton, so fetching it once and reusing the reference is safe.
+    private lazy var quickLookPanel: QLPreviewPanel? = QLPreviewPanel.shared()
+    // Tracked ourselves rather than reading panel.isVisible on every
+    // selection change / arrow key, on the chance that property read has
+    // its own non-trivial cost too — this way normal browsing (before
+    // Quick Look has ever been opened) never touches `quickLookPanel` at
+    // all, lazy-initializing it only the moment it's actually needed.
+    private var isQuickLookVisible = false
 
     // Search is scoped to List View only (see the doc comment on
     // ListViewController.showSearchResults) — starting a search force-
@@ -335,8 +347,7 @@ public final class MainWindowController: NSWindowController {
                 return nil
             }
 
-            if event.keyCode == 125 || event.keyCode == 126, // down / up
-               let panel = QLPreviewPanel.shared(), panel.isVisible {
+            if event.keyCode == 125 || event.keyCode == 126, self.isQuickLookVisible { // down / up
                 // In a real icon grid, Down/Up move by a full row, not by
                 // one item the way Left/Right (and List View's Down/Up,
                 // since it's already single-column) do.
@@ -350,9 +361,10 @@ public final class MainWindowController: NSWindowController {
     }
 
     @objc public func toggleQuickLook(_ sender: Any? = nil) {
-        guard let panel = QLPreviewPanel.shared() else { return }
-        if panel.isVisible {
+        guard let panel = quickLookPanel else { return }
+        if isQuickLookVisible {
             panel.orderOut(nil)
+            isQuickLookVisible = false
             quickLookIndexObservation?.invalidate()
             quickLookIndexObservation = nil
         } else {
@@ -364,6 +376,7 @@ public final class MainWindowController: NSWindowController {
                 self?.selectItemInActiveBrowser(at: panel.currentPreviewItemIndex)
             }
             panel.makeKeyAndOrderFront(nil)
+            isQuickLookVisible = true
         }
     }
 
@@ -384,12 +397,17 @@ public final class MainWindowController: NSWindowController {
     }
 
     private func quickLookSelectionDidChange() {
-        guard let panel = QLPreviewPanel.shared(), panel.isVisible else { return }
+        // isQuickLookVisible short-circuits *before* ever touching
+        // quickLookPanel — during ordinary browsing (Quick Look never
+        // opened this session), this function must do zero QuickLook-
+        // related work, full stop, since it runs on every single
+        // selection change including arrow-key navigation.
+        guard isQuickLookVisible, let panel = quickLookPanel else { return }
         selectCurrentQuickLookIndex(in: panel)
     }
 
     private func stepQuickLook(by delta: Int) {
-        guard let panel = QLPreviewPanel.shared(), panel.isVisible else { return }
+        guard isQuickLookVisible, let panel = quickLookPanel else { return }
         let count = quickLookItems().count
         guard count > 0 else { return }
         let newIndex = min(max(panel.currentPreviewItemIndex + delta, 0), count - 1)

@@ -45,6 +45,14 @@ public final class IconViewController: NSViewController {
     private lazy var doubleClickGesture: NSClickGestureRecognizer = {
         let gesture = NSClickGestureRecognizer(target: self, action: #selector(handleDoubleClick(_:)))
         gesture.numberOfClicksRequired = 2
+        // By default a gesture recognizer withholds the underlying mouse
+        // events from the view until it's decided whether this click
+        // sequence matches its gesture — which was delaying ordinary
+        // single-click selection by the system's whole double-click
+        // window (~0.5–1s) waiting to see if a second click would follow.
+        // This lets clicks reach normal selection handling immediately;
+        // double-click detection still happens independently.
+        gesture.delaysPrimaryMouseButtonEvents = false
         return gesture
     }()
 
