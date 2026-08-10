@@ -8,7 +8,7 @@ import PackageDescription
 // small enough not to warrant its own module) rather than added as
 // originally planned.
 let package = Package(
-    name: "ClassicFinder",
+    name: "AquaFinder",
     platforms: [.macOS(.v10_15)],
     targets: [
         .target(name: "FSCore"),
@@ -30,6 +30,6 @@ let package = Package(
             name: "FSWindow",
             dependencies: ["FSCore", "FSUIKit", "FSSidebar", "FSColumnView", "FSListView", "FSIconView", "FSGetInfo"]
         ),
-        .executableTarget(name: "ClassicFinderApp", dependencies: ["FSWindow"]),
+        .executableTarget(name: "AquaFinderApp", dependencies: ["FSWindow"]),
     ]
 )

@@ -31,7 +31,7 @@ public final class ListViewController: NSViewController {
     private let outlineView = NSOutlineView()
     private let scrollView = NSScrollView()
     private var rootURL: URL
-    private static let labelDotTag = 998
+    fileprivate static let labelDotTag = 998
 
     /// When non-nil, the outline shows this flat list instead of
     /// `rootURL`'s contents — how search results get displayed (Phase 4
@@ -232,7 +232,7 @@ extension ListViewController: NSMenuDelegate {
                 do {
                     try fileItem.setLabelColor(color)
                 } catch {
-                    NSLog("ClassicFinder: setLabelColor failed: \(error)")
+                    NSLog("AquaFinder: setLabelColor failed: \(error)")
                 }
                 self?.refresh()
                 self?.onFileSystemChange?()
@@ -333,6 +333,14 @@ extension ListViewController: NSOutlineViewDelegate, NSTextFieldDelegate {
     }
 
     private func makeCell(for identifier: NSUserInterfaceItemIdentifier) -> NSTableCellView {
+        if identifier.rawValue == "Name" {
+            let cell = ListNameCell()
+            cell.identifier = identifier
+            cell.textField?.isEditable = true
+            cell.textField?.delegate = self
+            return cell
+        }
+
         let cell = NSTableCellView()
         cell.identifier = identifier
 
@@ -342,52 +350,19 @@ extension ListViewController: NSOutlineViewDelegate, NSTextFieldDelegate {
         cell.addSubview(textField)
         cell.textField = textField
 
-        if identifier.rawValue == "Name" {
-            // Editable so classic Finder's "click an already-selected row's
-            // name" rename gesture works via NSTableView's built-in
-            // handling, in addition to the explicit Return-key path
-            // (beginRename() -> editColumn).
-            textField.isEditable = true
-            textField.delegate = self
-
-            let imageView = NSImageView()
-            imageView.translatesAutoresizingMaskIntoConstraints = false
-            cell.addSubview(imageView)
-            cell.imageView = imageView
-
-            // Label-color indicator dot, found again in configure(_:) via
-            // its tag since NSTableCellView only has first-class slots for
-            // .textField/.imageView.
-            let labelDot = NSImageView()
-            labelDot.tag = Self.labelDotTag
-            labelDot.translatesAutoresizingMaskIntoConstraints = false
-            cell.addSubview(labelDot)
-
-            NSLayoutConstraint.activate([
-                imageView.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
-                imageView.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                imageView.widthAnchor.constraint(equalToConstant: 16),
-                imageView.heightAnchor.constraint(equalToConstant: 16),
-                textField.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 4),
-                textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                labelDot.leadingAnchor.constraint(equalTo: textField.trailingAnchor, constant: 4),
-                labelDot.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor, constant: -4),
-                labelDot.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                labelDot.widthAnchor.constraint(equalToConstant: 8),
-                labelDot.heightAnchor.constraint(equalToConstant: 8),
-            ])
-        } else {
-            NSLayoutConstraint.activate([
-                textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
-                textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -2),
-                textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            ])
-        }
+        NSLayoutConstraint.activate([
+            textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
+            textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -2),
+            textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+        ])
         return cell
     }
 
     private func configure(_ cell: NSTableCellView, for fileItem: FileItem, column: NSUserInterfaceItemIdentifier) {
         cell.textField?.font = NSFont.systemFont(ofSize: textSize.baseFontSize)
+        if let nameCell = cell as? ListNameCell {
+            nameCell.imageSizeConstraints.forEach { $0.constant = textSize.rowIconSize }
+        }
         switch column.rawValue {
         case "Name":
             cell.textField?.stringValue = fileItem.name
@@ -444,6 +419,62 @@ extension ListViewController: NSOutlineViewDelegate, NSTextFieldDelegate {
         _ = try? FileOperations.rename(fileItem.url, to: newName)
         refresh()
         onFileSystemChange?()
+    }
+}
+
+/// Name 列専用のセル。ファイルアイコンの表示サイズを文字サイズ設定に応じて
+/// 変えられるよう、幅・高さの制約を使い回せる形で保持しておく。
+private final class ListNameCell: NSTableCellView {
+    let imageSizeConstraints: [NSLayoutConstraint]
+
+    override init(frame frameRect: NSRect) {
+        let textField = NSTextField(labelWithString: "")
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        textField.lineBreakMode = .byTruncatingTail
+
+        // Editable so classic Finder's "click an already-selected row's
+        // name" rename gesture works via NSTableView's built-in handling,
+        // in addition to the explicit Return-key path (beginRename() ->
+        // editColumn).
+        let imageView = NSImageView()
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+
+        // Label-color indicator dot, found again in configure(_:) via its
+        // tag since NSTableCellView only has first-class slots for
+        // .textField/.imageView.
+        let labelDot = NSImageView()
+        labelDot.tag = ListViewController.labelDotTag
+        labelDot.translatesAutoresizingMaskIntoConstraints = false
+
+        let widthConstraint = imageView.widthAnchor.constraint(equalToConstant: 16)
+        let heightConstraint = imageView.heightAnchor.constraint(equalToConstant: 16)
+        imageSizeConstraints = [widthConstraint, heightConstraint]
+
+        super.init(frame: frameRect)
+
+        addSubview(imageView)
+        addSubview(textField)
+        addSubview(labelDot)
+        self.imageView = imageView
+        self.textField = textField
+
+        NSLayoutConstraint.activate([
+            imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+            imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            widthConstraint,
+            heightConstraint,
+            textField.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 4),
+            textField.centerYAnchor.constraint(equalTo: centerYAnchor),
+            labelDot.leadingAnchor.constraint(equalTo: textField.trailingAnchor, constant: 4),
+            labelDot.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
+            labelDot.centerYAnchor.constraint(equalTo: centerYAnchor),
+            labelDot.widthAnchor.constraint(equalToConstant: 8),
+            labelDot.heightAnchor.constraint(equalToConstant: 8),
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 }
 

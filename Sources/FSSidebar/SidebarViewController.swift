@@ -220,38 +220,57 @@ extension SidebarViewController: NSOutlineViewDelegate {
 
     private func itemCell(for fileItem: FileItem) -> NSView {
         let identifier = NSUserInterfaceItemIdentifier("ItemCell")
-        let cell: NSTableCellView
-        if let existing = outlineView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView {
+        let cell: SidebarItemCell
+        if let existing = outlineView.makeView(withIdentifier: identifier, owner: self) as? SidebarItemCell {
             cell = existing
         } else {
-            cell = NSTableCellView()
+            cell = SidebarItemCell()
             cell.identifier = identifier
-
-            let imageView = NSImageView()
-            imageView.translatesAutoresizingMaskIntoConstraints = false
-            let textField = NSTextField(labelWithString: "")
-            textField.translatesAutoresizingMaskIntoConstraints = false
-            textField.lineBreakMode = .byTruncatingTail
-
-            cell.addSubview(imageView)
-            cell.addSubview(textField)
-            cell.imageView = imageView
-            cell.textField = textField
-
-            NSLayoutConstraint.activate([
-                imageView.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-                imageView.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                imageView.widthAnchor.constraint(equalToConstant: 16),
-                imageView.heightAnchor.constraint(equalToConstant: 16),
-
-                textField.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 4),
-                textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
-                textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            ])
         }
+        cell.imageSizeConstraints.forEach { $0.constant = textSize.rowIconSize }
         cell.textField?.font = NSFont.systemFont(ofSize: textSize.baseFontSize)
         cell.textField?.stringValue = fileItem.name
         cell.imageView?.image = IconCache.icon(for: fileItem.url)
         return cell
+    }
+}
+
+/// アイコンの表示サイズを文字サイズ設定に応じて変えられるよう、
+/// 幅・高さの制約を使い回せる形で保持しておくカスタムセル。
+private final class SidebarItemCell: NSTableCellView {
+    let imageSizeConstraints: [NSLayoutConstraint]
+
+    override init(frame frameRect: NSRect) {
+        let imageView = NSImageView()
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        let textField = NSTextField(labelWithString: "")
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        textField.lineBreakMode = .byTruncatingTail
+
+        let widthConstraint = imageView.widthAnchor.constraint(equalToConstant: 16)
+        let heightConstraint = imageView.heightAnchor.constraint(equalToConstant: 16)
+        imageSizeConstraints = [widthConstraint, heightConstraint]
+
+        super.init(frame: frameRect)
+
+        addSubview(imageView)
+        addSubview(textField)
+        self.imageView = imageView
+        self.textField = textField
+
+        NSLayoutConstraint.activate([
+            imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            widthConstraint,
+            heightConstraint,
+
+            textField.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 4),
+            textField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            textField.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 }

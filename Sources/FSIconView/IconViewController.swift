@@ -90,6 +90,11 @@ public final class IconViewController: NSViewController {
 
     public func applyTextSize(_ textSize: TextSize) {
         self.textSize = textSize
+        if let layout = collectionView.collectionViewLayout as? NSCollectionViewFlowLayout {
+            let itemSize = textSize.gridItemSize
+            layout.itemSize = NSSize(width: itemSize.width, height: itemSize.height)
+            layout.invalidateLayout()
+        }
         collectionView.reloadData()
     }
 
@@ -100,7 +105,8 @@ public final class IconViewController: NSViewController {
 
     private func setUpCollectionView() {
         let layout = NSCollectionViewFlowLayout()
-        layout.itemSize = NSSize(width: 96, height: 90)
+        let itemSize = textSize.gridItemSize
+        layout.itemSize = NSSize(width: itemSize.width, height: itemSize.height)
         layout.minimumInteritemSpacing = 8
         layout.minimumLineSpacing = 12
         layout.sectionInset = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
@@ -177,7 +183,7 @@ public final class IconViewController: NSViewController {
                 do {
                     try fileItem.setLabelColor(color)
                 } catch {
-                    NSLog("ClassicFinder: setLabelColor failed: \(error)")
+                    NSLog("AquaFinder: setLabelColor failed: \(error)")
                 }
                 self?.reload()
                 self?.onFileSystemChange?()

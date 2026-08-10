@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>ClassicFinder</string>
+    <string>AquaFinder</string>
     <key>CFBundleDisplayName</key>
-    <string>ClassicFinder</string>
+    <string>AquaFinder</string>
     <key>CFBundleIdentifier</key>
-    <string>com.local.classicfinder</string>
+    <string>com.local.aquafinder</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>CFBundleShortVersionString</key>
@@ -17,7 +17,7 @@
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>CFBundleExecutable</key>
-    <string>ClassicFinder</string>
+    <string>AquaFinder</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleDevelopmentRegion</key>

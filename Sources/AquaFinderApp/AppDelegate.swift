@@ -73,7 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, AppWindowOpening {
         appMenu.addItem(.separator())
         let quitFormat = NSLocalizedString("Quit %@", comment: "アプリメニュー: 終了（%@はアプリ名、翻訳しない）")
         appMenu.addItem(
-            withTitle: String(format: quitFormat, "ClassicFinder"),
+            withTitle: String(format: quitFormat, "AquaFinder"),
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
         )

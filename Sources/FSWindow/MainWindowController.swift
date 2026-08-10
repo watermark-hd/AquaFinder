@@ -101,7 +101,7 @@ public final class MainWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "ClassicFinder"
+        window.title = "AquaFinder"
         // AppDelegate が NSApp.appearance を .aqua に固定していても、Apple
         // Silicon＋最近の macOS ではツールバー/タイトルバー付近の一部マテリアル
         // がシステムのダーク設定を拾ってしまうことがある。ウィンドウ単体にも
@@ -199,7 +199,11 @@ public final class MainWindowController: NSWindowController {
     private func setUpContent() {
         let splitVC = NSSplitViewController()
 
-        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarVC)
+        // 通常の（"sidebar" マジックではない）SplitViewItem を使う。
+        // sidebarWithViewController: が自動挿入するシステム標準の vibrancy
+        // マテリアルは、ダークモード時に強制した Aqua 外観と噛み合わず、
+        // サイドバー周囲に黒い縁取りが出てしまう不具合の原因だった。
+        let sidebarItem = NSSplitViewItem(viewController: sidebarVC)
         sidebarItem.minimumThickness = 160
         sidebarItem.maximumThickness = 260
         splitVC.addSplitViewItem(sidebarItem)
@@ -721,7 +725,7 @@ public final class MainWindowController: NSWindowController {
     }
 }
 
-/// AppDelegate（ClassicFinderApp モジュール）へ直接依存せずに新規ウィンドウを
+/// AppDelegate（AquaFinderApp モジュール）へ直接依存せずに新規ウィンドウを
 /// 開くための最小限のプロトコル。AppDelegate 側でこれに準拠させる。
 public protocol AppWindowOpening: AnyObject {
     func openNewWindow(rootURL: URL)

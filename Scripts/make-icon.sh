@@ -1,5 +1,5 @@
 #!/bin/sh
-# Converts Resources/ClassicFinder.iconset (a standard macOS .iconset folder
+# Converts Resources/AquaFinder.iconset (a standard macOS .iconset folder
 # of PNGs at the required sizes: icon_16x16.png, icon_16x16@2x.png,
 # icon_32x32.png, ... icon_512x512@2x.png) into Resources/AppIcon.icns.
 #
@@ -9,7 +9,7 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-ICONSET=Resources/ClassicFinder.iconset
+ICONSET=Resources/AquaFinder.iconset
 OUT=Resources/AppIcon.icns
 
 if [ ! -d "$ICONSET" ] || [ -z "$(ls -A "$ICONSET" 2>/dev/null)" ]; then

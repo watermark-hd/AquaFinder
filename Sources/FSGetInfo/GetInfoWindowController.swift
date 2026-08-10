@@ -200,7 +200,7 @@ public final class GetInfoWindowController: NSWindowController {
         do {
             try fileItem.setLabelColor(color)
         } catch {
-            NSLog("ClassicFinder: setLabelColor failed: \(error)")
+            NSLog("AquaFinder: setLabelColor failed: \(error)")
         }
         updateSwatchSelection()
     }

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds a universal (arm64 + x86_64) release binary for ClassicFinderApp.
+# Builds a universal (arm64 + x86_64) release binary for AquaFinderApp.
 #
 # Tries SwiftPM's native multi-arch flag first (`swift build --arch arm64
 # --arch x86_64`), which since SwiftPM 5.6 lipos the two slices together
@@ -7,14 +7,14 @@
 # them with `lipo` if the merged binary isn't where expected — confirmed
 # working on this toolchain (Swift 5.9.2, CLT-only, no Xcode.app).
 #
-# Result is always left at .build/universal/ClassicFinderApp for
+# Result is always left at .build/universal/AquaFinderApp for
 # make-app-bundle.sh to pick up.
 
 set -e
 
 cd "$(dirname "$0")/.."
 
-TARGET=ClassicFinderApp
+TARGET=AquaFinderApp
 CONFIG=release
 OUT_DIR=.build/universal
 OUT_BIN="$OUT_DIR/$TARGET"
@@ -22,7 +22,7 @@ OUT_BIN="$OUT_DIR/$TARGET"
 mkdir -p "$OUT_DIR"
 
 echo "==> Trying SwiftPM native multi-arch build..."
-if swift build -c "$CONFIG" --arch arm64 --arch x86_64 --product "$TARGET" 2>/tmp/classicfinder-multiarch-build.log; then
+if swift build -c "$CONFIG" --arch arm64 --arch x86_64 --product "$TARGET" 2>/tmp/aquafinder-multiarch-build.log; then
     MERGED_BIN=".build/apple/Products/$CONFIG/$TARGET"
     if [ -f "$MERGED_BIN" ] && lipo -info "$MERGED_BIN" 2>/dev/null | grep -q "x86_64" && lipo -info "$MERGED_BIN" | grep -q "arm64"; then
         echo "==> Multi-arch build succeeded: $MERGED_BIN"
@@ -34,7 +34,7 @@ if swift build -c "$CONFIG" --arch arm64 --arch x86_64 --product "$TARGET" 2>/tm
     fi
 else
     echo "==> Multi-arch build flag failed — falling back to manual dual-build + lipo."
-    cat /tmp/classicfinder-multiarch-build.log || true
+    cat /tmp/aquafinder-multiarch-build.log || true
 fi
 
 echo "==> Building arm64 slice..."

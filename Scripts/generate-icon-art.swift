@@ -1,11 +1,11 @@
 #!/usr/bin/env swift
-// Renders ClassicFinder's app icon (an original glossy blue rounded-square
+// Renders AquaFinder's app icon (an original glossy blue rounded-square
 // + magnifying glass design — deliberately not a recreation of Apple's
 // trademarked Finder face) into every PNG size iconutil expects, directly
-// into Resources/ClassicFinder.iconset. Re-run any time the design changes;
+// into Resources/AquaFinder.iconset. Re-run any time the design changes;
 // Scripts/make-icon.sh then converts the .iconset into AppIcon.icns.
 //
-// Usage: swift Scripts/generate-icon-art.swift Resources/ClassicFinder.iconset
+// Usage: swift Scripts/generate-icon-art.swift Resources/AquaFinder.iconset
 
 import AppKit
 

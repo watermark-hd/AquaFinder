@@ -1,5 +1,5 @@
 #!/bin/sh
-# Assembles ClassicFinder.app from the universal binary produced by
+# Assembles AquaFinder.app from the universal binary produced by
 # build-universal.sh, then ad-hoc code-signs it. No Apple Developer Program
 # enrollment or notarization involved (personal use across two Macs only).
 
@@ -7,8 +7,8 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-APP_NAME=ClassicFinder
-BIN_PATH=".build/universal/ClassicFinderApp"
+APP_NAME=AquaFinder
+BIN_PATH=".build/universal/AquaFinderApp"
 APP_DIR="$APP_NAME.app"
 
 if [ ! -f "$BIN_PATH" ]; then

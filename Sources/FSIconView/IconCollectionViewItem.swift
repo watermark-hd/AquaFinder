@@ -24,6 +24,8 @@ final class IconCollectionViewItem: NSCollectionViewItem {
     // feedback at all.
     private let selectionBackground = NSView()
     private let labelDot = NSImageView()
+    private var imageWidthConstraint: NSLayoutConstraint!
+    private var imageHeightConstraint: NSLayoutConstraint!
 
     override func loadView() {
         let container = NSView()
@@ -61,6 +63,9 @@ final class IconCollectionViewItem: NSCollectionViewItem {
         container.addSubview(labelDot)
         container.addSubview(textField)
 
+        imageWidthConstraint = imageView.widthAnchor.constraint(equalToConstant: 48)
+        imageHeightConstraint = imageView.heightAnchor.constraint(equalToConstant: 48)
+
         NSLayoutConstraint.activate([
             selectionBackground.topAnchor.constraint(equalTo: container.topAnchor, constant: 2),
             selectionBackground.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -2),
@@ -69,8 +74,8 @@ final class IconCollectionViewItem: NSCollectionViewItem {
 
             imageView.topAnchor.constraint(equalTo: container.topAnchor, constant: 4),
             imageView.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            imageView.widthAnchor.constraint(equalToConstant: 48),
-            imageView.heightAnchor.constraint(equalToConstant: 48),
+            imageWidthConstraint,
+            imageHeightConstraint,
 
             labelDot.trailingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 2),
             labelDot.bottomAnchor.constraint(equalTo: imageView.bottomAnchor, constant: 2),
@@ -97,6 +102,8 @@ final class IconCollectionViewItem: NSCollectionViewItem {
 
     func configure(with fileItem: FileItem, textSize: TextSize) {
         self.fileItem = fileItem
+        imageWidthConstraint.constant = textSize.gridIconSize
+        imageHeightConstraint.constant = textSize.gridIconSize
         imageView?.image = IconCache.icon(for: fileItem.url)
         textField?.font = NSFont.systemFont(ofSize: textSize.baseFontSize)
         textField?.stringValue = fileItem.name
@@ -107,7 +114,8 @@ final class IconCollectionViewItem: NSCollectionViewItem {
         labelDot.image = color == .none ? nil : LabelSwatchImage.make(for: color, diameter: 9)
 
         let requestedURL = fileItem.url
-        ThumbnailLoader.thumbnail(for: requestedURL, size: CGSize(width: 48, height: 48), scale: 2) { [weak self] image in
+        let iconSize = textSize.gridIconSize
+        ThumbnailLoader.thumbnail(for: requestedURL, size: CGSize(width: iconSize, height: iconSize), scale: 2) { [weak self] image in
             // The cell may have been recycled for a different item by the
             // time this async callback fires — only apply it if it's
             // still showing the URL that was requested.

@@ -13,7 +13,7 @@ enum ViewModePreferenceStore {
     private static var fileURL: URL {
         let appSupport = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let dir = appSupport.appendingPathComponent("ClassicFinder", isDirectory: true)
+        let dir = appSupport.appendingPathComponent("AquaFinder", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("ViewPreferences.plist")
     }

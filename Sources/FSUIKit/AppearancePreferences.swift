@@ -1,6 +1,8 @@
 import Foundation
 
-/// UI 全体の文字サイズ・行の高さの3段階プリセット。
+/// UI 全体の文字サイズ・行の高さ・アイコンサイズの3段階プリセット。
+/// 老眼でも読みやすいよう、以前より全体的に大きめに設定してある
+/// （旧「大」相当が新しい「中」になるくらいのスケール、「大」はさらに拡大）。
 public enum TextSize: Int, CaseIterable {
     case small = 0
     case medium = 1
@@ -8,27 +10,55 @@ public enum TextSize: Int, CaseIterable {
 
     public var baseFontSize: CGFloat {
         switch self {
-        case .small: return 10
-        case .medium: return 11
-        case .large: return 13
+        case .small: return 12
+        case .medium: return 15
+        case .large: return 19
         }
     }
 
     /// リスト表示（ファイル一覧）の行の高さ。
     public var listRowHeight: CGFloat {
         switch self {
-        case .small: return 16
-        case .medium: return 18
-        case .large: return 22
+        case .small: return 20
+        case .medium: return 26
+        case .large: return 34
         }
     }
 
     /// サイドバーの行の高さ。
     public var sidebarRowHeight: CGFloat {
         switch self {
-        case .small: return 18
+        case .small: return 22
+        case .medium: return 28
+        case .large: return 36
+        }
+    }
+
+    /// サイドバー／リスト表示の行アイコン（ファイル/フォルダアイコン）の
+    /// 一辺のサイズ。
+    public var rowIconSize: CGFloat {
+        switch self {
+        case .small: return 16
         case .medium: return 20
-        case .large: return 24
+        case .large: return 26
+        }
+    }
+
+    /// アイコン表示のアイコン画像の一辺のサイズ。
+    public var gridIconSize: CGFloat {
+        switch self {
+        case .small: return 40
+        case .medium: return 56
+        case .large: return 76
+        }
+    }
+
+    /// アイコン表示の1セル分のサイズ（アイコン＋ラベル込み）。
+    public var gridItemSize: (width: CGFloat, height: CGFloat) {
+        switch self {
+        case .small: return (84, 78)
+        case .medium: return (108, 104)
+        case .large: return (140, 136)
         }
     }
 
@@ -59,7 +89,7 @@ public enum AppTheme: String, CaseIterable {
 extension Notification.Name {
     /// テーマまたは文字サイズが変更されたときに発火。開いている全ウィンドウ
     /// はこれを購読して即座に見た目を更新する。
-    public static let appearancePreferencesDidChange = Notification.Name("ClassicFinder.appearancePreferencesDidChange")
+    public static let appearancePreferencesDidChange = Notification.Name("AquaFinder.appearancePreferencesDidChange")
 }
 
 /// `ViewModePreferenceStore` と同じ、Application Support 配下の plist への
@@ -68,7 +98,7 @@ public enum AppearancePreferenceStore {
     private static var fileURL: URL {
         let appSupport = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let dir = appSupport.appendingPathComponent("ClassicFinder", isDirectory: true)
+        let dir = appSupport.appendingPathComponent("AquaFinder", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("AppearancePreferences.plist")
     }
