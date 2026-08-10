@@ -2,4 +2,5 @@
 .swiftpm/
 *.xcuserstate
 AquaFinder.app/
+*.dmg
 .DS_Store
