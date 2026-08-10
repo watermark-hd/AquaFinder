@@ -9,6 +9,11 @@ import FSIconView
 import FSGetInfo
 
 public final class MainWindowController: NSWindowController {
+    /// 初回起動時（自動保存されたフレーム/サイドバー幅がまだ無いとき）の
+    /// デフォルトサイズ。環境設定の「ウィンドウサイズを既定に戻す」からも使う。
+    private static let defaultWindowSize = NSSize(width: 720, height: 460)
+    private static let defaultSidebarWidth: CGFloat = 150
+
     private let sidebarVC = SidebarViewController()
     private let columnVC: ColumnBrowserViewController
     private let listVC: ListViewController
@@ -30,6 +35,9 @@ public final class MainWindowController: NSWindowController {
     private var spacebarMonitor: Any?
     // テーマ／文字サイズが環境設定から変更されたときに全ビューへ反映する。
     private var appearanceObserver: NSObjectProtocol?
+    private var resetLayoutObserver: NSObjectProtocol?
+    // ウィンドウサイズのデフォルトへのリセット用（setUpContent で設定）。
+    private weak var splitView: NSSplitView?
     // Keeps the browser's selection highlight following along as the
     // user steps through Quick Look — both our own Up/Down handling and
     // QLPreviewPanel's native Left/Right change this property, so
@@ -96,7 +104,7 @@ public final class MainWindowController: NSWindowController {
         currentRootURL = rootURL
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 900, height: 560),
+            contentRect: NSRect(origin: .zero, size: Self.defaultWindowSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -122,9 +130,12 @@ public final class MainWindowController: NSWindowController {
         // around) by resetting to the intended default size whenever the
         // restored frame falls below a sane floor.
         if window.frame.width < window.minSize.width || window.frame.height < window.minSize.height {
-            window.setContentSize(NSSize(width: 900, height: 560))
+            window.setContentSize(Self.defaultWindowSize)
         }
         window.center()
+        // The frame at this point is authoritative — either genuinely
+        // restored from a prior launch, or the default just set above.
+        let intendedWidth = window.frame.width
 
         super.init(window: window)
 
@@ -132,6 +143,21 @@ public final class MainWindowController: NSWindowController {
         historyIndex = 0
 
         setUpContent()
+        // Installing the split view's contentViewController above runs an
+        // Auto Layout pass that (for reasons not fully pinned down —
+        // possibly the split view's content not yet having anything to
+        // resolve a fitting size against) collapses the window's width down
+        // to `minSize.width` every single time, silently discarding
+        // whatever it was set to above. Re-assert just the width (not the
+        // whole frame — setUpToolbar() below still needs to grow the height
+        // to fit the toolbar, which is legitimate and shouldn't be undone).
+        if window.frame.width < intendedWidth {
+            var frame = window.frame
+            let centerX = frame.midX
+            frame.size.width = intendedWidth
+            frame.origin.x = centerX - intendedWidth / 2
+            window.setFrame(frame, display: false)
+        }
         setUpToolbar()
         showActiveViewController()
         updateStatusBar()
@@ -140,6 +166,11 @@ public final class MainWindowController: NSWindowController {
             forName: .appearancePreferencesDidChange, object: nil, queue: .main
         ) { [weak self] _ in
             self?.applyAppearancePreferences()
+        }
+        resetLayoutObserver = NotificationCenter.default.addObserver(
+            forName: .resetWindowLayoutRequested, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.resetToDefaultLayout()
         }
 
         columnVC.onSelectionChange = { [weak self] _ in
@@ -188,6 +219,9 @@ public final class MainWindowController: NSWindowController {
         if let appearanceObserver {
             NotificationCenter.default.removeObserver(appearanceObserver)
         }
+        if let resetLayoutObserver {
+            NotificationCenter.default.removeObserver(resetLayoutObserver)
+        }
         quickLookIndexObservation?.invalidate()
         searchQuery?.stop()
     }
@@ -204,12 +238,26 @@ public final class MainWindowController: NSWindowController {
         // マテリアルは、ダークモード時に強制した Aqua 外観と噛み合わず、
         // サイドバー周囲に黒い縁取りが出てしまう不具合の原因だった。
         let sidebarItem = NSSplitViewItem(viewController: sidebarVC)
-        sidebarItem.minimumThickness = 160
-        sidebarItem.maximumThickness = 260
+        sidebarItem.minimumThickness = 120
+        sidebarItem.maximumThickness = 220
         splitVC.addSplitViewItem(sidebarItem)
 
         let contentItem = NSSplitViewItem(viewController: contentContainer)
         splitVC.addSplitViewItem(contentItem)
+
+        // ユーザーがドラッグで調整したサイドバー幅を次回起動時にも復元する。
+        let hasSavedSidebarWidth = UserDefaults.standard.object(forKey: "NSSplitView Subview Frames MainSplitView") != nil
+        splitVC.splitView.autosaveName = "MainSplitView"
+        self.splitView = splitVC.splitView
+        if !hasSavedSidebarWidth {
+            // 保存済みの幅がまだ無い初回は、明示的に小さめのデフォルト幅を
+            // 設定する。この時点ではまだウィンドウに実フレームが無く
+            // setPosition が効かないため、次のランループでレイアウト確定後に
+            // 適用する。
+            DispatchQueue.main.async { [weak self] in
+                self?.splitView?.setPosition(Self.defaultSidebarWidth, ofDividerAt: 0)
+            }
+        }
 
         // Wrapped in a plain root view controller so the split view (sidebar
         // + browsing pane) can sit above a fixed-height status bar, while
@@ -226,10 +274,15 @@ public final class MainWindowController: NSWindowController {
         // the gray doesn't end up washing out the whole window.
         let rootView = NSView()
         rootView.wantsLayer = true
-        // .windowBackgroundColor reads as a light gray (it's meant for
-        // chrome, not content) — classic Finder's file-listing area is
-        // near-white, so use the semantically "content area" color.
-        rootView.layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+        // NSColor.textBackgroundColor.cgColor looks right in testing but is
+        // a *dynamic* CGColor on modern macOS: CALayer.backgroundColor
+        // re-resolves it against the layer's own live appearance rather
+        // than freezing the color at assignment time, and that resolution
+        // doesn't reliably respect the forced Aqua appearance — the same
+        // failure mode already hit for the status bar, sidebar vibrancy,
+        // and scroll view backgrounds. A fixed, non-dynamic near-white RGB
+        // value sidesteps it entirely.
+        rootView.layer?.backgroundColor = NSColor(calibratedWhite: 0.98, alpha: 1.0).cgColor
         rootView.addSubview(splitVC.view)
         rootView.addSubview(statusBarView)
         NSLayoutConstraint.activate([
@@ -358,7 +411,7 @@ public final class MainWindowController: NSWindowController {
 
         switch theme {
         case .graphite10_6:
-            window?.backgroundColor = NSColor(calibratedWhite: 0.85, alpha: 1.0)
+            window?.backgroundColor = NSColor(calibratedWhite: 0.80, alpha: 1.0)
         case .metal10_4:
             window?.backgroundColor = MetalTexture.backgroundColor
         }
@@ -368,6 +421,22 @@ public final class MainWindowController: NSWindowController {
         sidebarVC.applyTextSize(textSize)
         listVC.applyTextSize(textSize)
         iconVC.applyTextSize(textSize)
+    }
+
+    /// 環境設定パネルの「ウィンドウサイズを既定に戻す」から呼ばれる。
+    /// ウィンドウ枠・サイドバー幅ともに自動保存が有効なので、ここでの
+    /// リサイズがそのまま次回起動時の初期値としても引き継がれる。
+    private func resetToDefaultLayout() {
+        if let window {
+            let newSize = Self.defaultWindowSize
+            var frame = window.frame
+            let centerX = frame.midX
+            let centerY = frame.midY
+            frame.size = newSize
+            frame.origin = NSPoint(x: centerX - newSize.width / 2, y: centerY - newSize.height / 2)
+            window.setFrame(frame, display: true, animate: true)
+        }
+        splitView?.setPosition(Self.defaultSidebarWidth, ofDividerAt: 0)
     }
 
     // MARK: - Quick Look

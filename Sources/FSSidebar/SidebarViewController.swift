@@ -80,6 +80,11 @@ public final class SidebarViewController: NSViewController {
         outlineView.dataSource = self
         outlineView.delegate = self
         outlineView.registerForDraggedTypes([.fileURL])
+        outlineView.backgroundColor = .clear
+        // See the matching comment in IconViewController: NSScrollView's
+        // own background drawing doesn't respect the forced Aqua appearance
+        // and can paint black in Dark Mode below the last row.
+        scrollView.drawsBackground = false
 
         scrollView.documentView = outlineView
         scrollView.hasVerticalScroller = true

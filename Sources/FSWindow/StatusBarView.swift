@@ -42,7 +42,7 @@ final class StatusBarView: NSView {
     func applyTheme(_ theme: AppTheme) {
         switch theme {
         case .graphite10_6:
-            layer?.backgroundColor = NSColor(calibratedWhite: 0.85, alpha: 1.0).cgColor
+            layer?.backgroundColor = NSColor(calibratedWhite: 0.80, alpha: 1.0).cgColor
         case .metal10_4:
             layer?.backgroundColor = MetalTexture.backgroundColor.cgColor
         }

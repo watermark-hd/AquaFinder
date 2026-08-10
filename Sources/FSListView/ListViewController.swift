@@ -144,6 +144,13 @@ public final class ListViewController: NSViewController {
         contextMenu.delegate = self
         outlineView.menu = contextMenu
 
+        outlineView.backgroundColor = .clear
+        // NSScrollView's own background drawing uses a dynamic system color
+        // that doesn't respect the forced Aqua appearance and can paint
+        // black in Dark Mode (visible below the last row); rely on the
+        // window's own always-light content background instead. See the
+        // matching comment in IconViewController.
+        scrollView.drawsBackground = false
         scrollView.documentView = outlineView
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true

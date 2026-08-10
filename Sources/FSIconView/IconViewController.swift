@@ -118,6 +118,14 @@ public final class IconViewController: NSViewController {
         collectionView.isSelectable = true
         collectionView.backgroundColors = [.clear]
         collectionView.addGestureRecognizer(doubleClickGesture)
+        // NSScrollView's own default background drawing uses a dynamic
+        // system color that — like the sidebar's vibrancy material and the
+        // status bar before it — doesn't respect the forced Aqua appearance
+        // and paints black in Dark Mode. collectionView is already .clear,
+        // so disabling the scroll view's own background drawing lets the
+        // window's real (always-light) content background show through
+        // instead.
+        scrollView.drawsBackground = false
         collectionView.registerForDraggedTypes([.fileURL])
         // Both must be set explicitly — see the matching comment in
         // ListViewController for why "local" drags need their own call.

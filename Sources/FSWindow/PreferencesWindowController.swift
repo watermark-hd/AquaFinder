@@ -16,7 +16,7 @@ public final class PreferencesWindowController: NSWindowController {
 
     public init() {
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 140),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 190),
             styleMask: [.titled, .closable, .utilityWindow],
             backing: .buffered,
             defer: false
@@ -64,7 +64,13 @@ public final class PreferencesWindowController: NSWindowController {
         textSizeRow.orientation = .horizontal
         textSizeRow.spacing = 8
 
-        let stack = NSStackView(views: [themeRow, textSizeRow])
+        let resetLayoutButton = NSButton(
+            title: NSLocalizedString("Reset Window Size to Default", comment: "環境設定: ウィンドウサイズ/サイドバー幅を既定値に戻すボタン"),
+            target: self, action: #selector(resetWindowLayout)
+        )
+        resetLayoutButton.bezelStyle = .rounded
+
+        let stack = NSStackView(views: [themeRow, textSizeRow, resetLayoutButton])
         stack.orientation = .vertical
         stack.spacing = 16
         stack.alignment = .leading
@@ -88,5 +94,9 @@ public final class PreferencesWindowController: NSWindowController {
         let index = textSizeControl.selectedSegment
         guard TextSize.allCases.indices.contains(index) else { return }
         AppearancePreferenceStore.textSize = TextSize.allCases[index]
+    }
+
+    @objc private func resetWindowLayout() {
+        NotificationCenter.default.post(name: .resetWindowLayoutRequested, object: nil)
     }
 }

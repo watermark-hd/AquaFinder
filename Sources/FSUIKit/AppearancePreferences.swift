@@ -90,6 +90,10 @@ extension Notification.Name {
     /// テーマまたは文字サイズが変更されたときに発火。開いている全ウィンドウ
     /// はこれを購読して即座に見た目を更新する。
     public static let appearancePreferencesDidChange = Notification.Name("AquaFinder.appearancePreferencesDidChange")
+    /// 環境設定パネルの「ウィンドウサイズを既定に戻す」ボタンから発火。
+    /// 開いている全ウィンドウがこれを購読し、自分自身のサイズ／サイドバー
+    /// 幅を既定値にリセットする。
+    public static let resetWindowLayoutRequested = Notification.Name("AquaFinder.resetWindowLayoutRequested")
 }
 
 /// `ViewModePreferenceStore` と同じ、Application Support 配下の plist への
