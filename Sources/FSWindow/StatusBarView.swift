@@ -17,6 +17,7 @@ final class StatusBarView: NSView {
 
         label.font = NSFont.systemFont(ofSize: TextSize.medium.baseFontSize)
         label.textColor = .secondaryLabelColor
+        label.lineBreakMode = .byTruncatingMiddle
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
 
@@ -53,19 +54,35 @@ final class StatusBarView: NSView {
     }
 
     func update(itemCount: Int, directoryURL: URL) {
-        var text: String
+        var statsText: String
         if itemCount == 1 {
-            text = NSLocalizedString("1 item", comment: "ステータスバー: 項目数（1件のとき）")
+            statsText = NSLocalizedString("1 item", comment: "ステータスバー: 項目数（1件のとき）")
         } else {
             let format = NSLocalizedString("%d items", comment: "ステータスバー: 項目数（複数件のとき、%dは件数）")
-            text = String(format: format, itemCount)
+            statsText = String(format: format, itemCount)
         }
         let keys: Set<URLResourceKey> = [.volumeAvailableCapacityForImportantUsageKey]
         if let capacity = (try? directoryURL.resourceValues(forKeys: keys))?.volumeAvailableCapacityForImportantUsage {
             let availableFormat = NSLocalizedString("%1$@, %2$@ available", comment: "ステータスバー: 項目数と空き容量の連結（%1$@=項目数の文言, %2$@=空き容量）")
-            text = String(format: availableFormat, text, ByteCountFormatter.statusBar.string(fromByteCount: capacity))
+            statsText = String(format: availableFormat, statsText, ByteCountFormatter.statusBar.string(fromByteCount: capacity))
         }
-        label.stringValue = text
+
+        let pathFormat = NSLocalizedString("%1$@ — %2$@", comment: "ステータスバー: フルパスと項目数/空き容量の連結（%1$@=現在のフォルダのパス, %2$@=項目数と空き容量の文言）")
+        label.stringValue = String(format: pathFormat, Self.displayPath(for: directoryURL), statsText)
+    }
+
+    /// ホームディレクトリ配下は "~" に短縮したフルパス表示（ステータスバーの
+    /// 限られた幅で読みやすくするため）。
+    private static func displayPath(for url: URL) -> String {
+        let home = NSHomeDirectory()
+        let path = url.path
+        if path == home {
+            return "~"
+        }
+        if path.hasPrefix(home + "/") {
+            return "~" + path.dropFirst(home.count)
+        }
+        return path
     }
 }
 

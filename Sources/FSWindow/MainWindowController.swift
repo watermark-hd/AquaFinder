@@ -11,7 +11,7 @@ import FSGetInfo
 public final class MainWindowController: NSWindowController {
     /// 初回起動時（自動保存されたフレーム/サイドバー幅がまだ無いとき）の
     /// デフォルトサイズ。環境設定の「ウィンドウサイズを既定に戻す」からも使う。
-    private static let defaultWindowSize = NSSize(width: 720, height: 460)
+    private static let defaultWindowSize = NSSize(width: 860, height: 560)
     private static let defaultSidebarWidth: CGFloat = 150
 
     private let sidebarVC = SidebarViewController()

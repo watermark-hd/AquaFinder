@@ -18,7 +18,7 @@ public enum MetalTexture {
             let distanceFromCenter = abs(CGFloat(y) - center) / center
             let highlight = (1 - distanceFromCenter) * 0.05
             let noise = CGFloat.random(in: -0.025...0.025)
-            let brightness = 0.72 + highlight + noise
+            let brightness = 0.62 + highlight + noise
             NSColor(calibratedWhite: brightness, alpha: 1.0).setFill()
             NSRect(x: 0, y: CGFloat(y), width: size.width, height: 1).fill()
         }
