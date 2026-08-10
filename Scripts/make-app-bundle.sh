@@ -1,7 +1,16 @@
 #!/bin/sh
 # Assembles AquaFinder.app from the universal binary produced by
-# build-universal.sh, then ad-hoc code-signs it. No Apple Developer Program
+# build-universal.sh, then code-signs it. No Apple Developer Program
 # enrollment or notarization involved (personal use across two Macs only).
+#
+# Signs with the local self-signed "AquaFinder Local Dev" identity when
+# it's present in the login keychain, falling back to ad-hoc (`-`)
+# otherwise (e.g. on the other Mac, which doesn't have that identity
+# installed). A stable identity matters because macOS ties folder-access
+# (TCC) grants to the code signature — ad-hoc signing gets a new identity
+# every rebuild, so the app forgets Desktop/Documents/Downloads access
+# and re-prompts each time; signing with the same identity every build
+# keeps those grants across rebuilds.
 
 set -e
 
@@ -39,8 +48,15 @@ for lproj in Resources/*.lproj; do
     cp -R "$lproj" "$APP_DIR/Contents/Resources/"
 done
 
-echo "==> Ad-hoc code signing"
-codesign --deep --force --sign - "$APP_DIR"
+SIGN_IDENTITY="AquaFinder Local Dev"
+if ! security find-identity -v -p codesigning 2>/dev/null | grep -q "$SIGN_IDENTITY"; then
+    echo "==> \"$SIGN_IDENTITY\" identity not found on this Mac — falling back to ad-hoc signing"
+    echo "    (folder-access permissions will need re-granting after every rebuild on this Mac)"
+    SIGN_IDENTITY="-"
+fi
+
+echo "==> Code signing ($SIGN_IDENTITY)"
+codesign --deep --force --sign "$SIGN_IDENTITY" "$APP_DIR"
 
 echo "==> Verifying"
 lipo -info "$APP_DIR/Contents/MacOS/$APP_NAME"
