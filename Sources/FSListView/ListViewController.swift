@@ -19,6 +19,10 @@ public final class ListViewController: NSViewController {
     /// the actual panel is MainWindowController's job (it owns the set of
     /// open Get Info windows), this view just reports the request.
     public var onShowInfo: ((FileItem) -> Void)?
+    /// Fired when "Open in New Window" is chosen from the right-click menu
+    /// on a folder — MainWindowController delegates the actual window
+    /// creation to AppDelegate.
+    public var onOpenInNewWindow: ((FileItem) -> Void)?
     /// Fired on any selection change — MainWindowController uses this to
     /// keep an open Quick Look panel in sync without caring which view
     /// mode is actually active.
@@ -34,14 +38,16 @@ public final class ListViewController: NSViewController {
     /// scopes search results to List View only; see MainWindowController).
     private var searchResults: [FileItem]?
 
-    // NSOutlineView calls numberOfChildrenOfItem/child(_:ofItem:) many
-    // times per directory during a single reload/expand/scroll pass —
-    // without this cache, every one of those re-hit the disk and re-sorted
-    // the folder's contents, which was the main cause of the app feeling
-    // sluggish. Cleared whenever the tree can actually have changed.
-    private var childrenCache: [URL: [FileItem]] = [:]
     private let dragModifierTracker = DragModifierTracker()
     private let springLoadTimer = SpringLoadTimer()
+
+    // フォルダの再帰サイズは非同期・キャンセル可能（Get Info と同じ
+    // FolderSizeCalculator）。NSOutlineView はオフスクリーン行のセルを
+    // 作らないため、同時に走る計算は自然と「今画面に見えている行」程度に
+    // 絞られる。
+    private var folderSizeCache: [URL: Int64] = [:]
+    private var pendingSizeCalculators: [URL: FolderSizeCalculator] = [:]
+    private var textSize: TextSize = AppearancePreferenceStore.textSize
 
     public init(rootURL: URL) {
         self.rootURL = rootURL
@@ -50,6 +56,10 @@ public final class ListViewController: NSViewController {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        pendingSizeCalculators.values.forEach { $0.cancel() }
     }
 
     public override func loadView() {
@@ -67,8 +77,20 @@ public final class ListViewController: NSViewController {
 
     public func setRoot(_ url: URL) {
         rootURL = url
-        childrenCache.removeAll()
+        resetFolderSizes()
         outlineView.reloadData()
+    }
+
+    public func applyTextSize(_ textSize: TextSize) {
+        self.textSize = textSize
+        outlineView.rowHeight = textSize.listRowHeight
+        outlineView.reloadData()
+    }
+
+    private func resetFolderSizes() {
+        pendingSizeCalculators.values.forEach { $0.cancel() }
+        pendingSizeCalculators.removeAll()
+        folderSizeCache.removeAll()
     }
 
     /// Replaces the listing with a flat set of search results (no
@@ -86,19 +108,19 @@ public final class ListViewController: NSViewController {
 
     private func setUpOutlineView() {
         let nameColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("Name"))
-        nameColumn.title = "Name"
+        nameColumn.title = NSLocalizedString("Name", comment: "リスト表示の列見出し: 名前")
         nameColumn.width = 260
 
         let dateColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("DateModified"))
-        dateColumn.title = "Date Modified"
+        dateColumn.title = NSLocalizedString("Date Modified", comment: "リスト表示の列見出し: 変更日")
         dateColumn.width = 150
 
         let sizeColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("Size"))
-        sizeColumn.title = "Size"
+        sizeColumn.title = NSLocalizedString("Size", comment: "リスト表示の列見出し: サイズ")
         sizeColumn.width = 80
 
         let kindColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("Kind"))
-        kindColumn.title = "Kind"
+        kindColumn.title = NSLocalizedString("Kind", comment: "リスト表示の列見出し: 種類")
         kindColumn.width = 120
 
         [nameColumn, dateColumn, sizeColumn, kindColumn].forEach { outlineView.addTableColumn($0) }
@@ -106,7 +128,7 @@ public final class ListViewController: NSViewController {
         outlineView.dataSource = self
         outlineView.delegate = self
         outlineView.usesAlternatingRowBackgroundColors = true
-        outlineView.rowHeight = 18
+        outlineView.rowHeight = textSize.listRowHeight
         outlineView.target = self
         outlineView.doubleAction = #selector(handleDoubleClick)
         outlineView.registerForDraggedTypes([.fileURL])
@@ -147,10 +169,7 @@ public final class ListViewController: NSViewController {
     }
 
     private func children(of url: URL) -> [FileItem] {
-        if let cached = childrenCache[url] { return cached }
-        let result = FileListing.contents(of: url)
-        childrenCache[url] = result
-        return result
+        DirectoryListingCache.contents(of: url)
     }
 }
 
@@ -165,7 +184,7 @@ extension ListViewController: SelectionProviding {
     public var currentDirectoryURL: URL { rootURL }
 
     public func refresh() {
-        childrenCache.removeAll()
+        resetFolderSizes()
         outlineView.reloadData()
     }
 
@@ -217,7 +236,8 @@ extension ListViewController: NSMenuDelegate {
                 }
                 self?.refresh()
                 self?.onFileSystemChange?()
-            }
+            },
+            onOpenInNewWindow: { [weak self] in self?.onOpenInNewWindow?(fileItem) }
         )
         items.forEach { menu.addItem($0) }
     }
@@ -367,6 +387,7 @@ extension ListViewController: NSOutlineViewDelegate, NSTextFieldDelegate {
     }
 
     private func configure(_ cell: NSTableCellView, for fileItem: FileItem, column: NSUserInterfaceItemIdentifier) {
+        cell.textField?.font = NSFont.systemFont(ofSize: textSize.baseFontSize)
         switch column.rawValue {
         case "Name":
             cell.textField?.stringValue = fileItem.name
@@ -384,7 +405,12 @@ extension ListViewController: NSOutlineViewDelegate, NSTextFieldDelegate {
             }
         case "Size":
             if fileItem.isBrowsable {
-                cell.textField?.stringValue = "--"
+                if let cachedSize = folderSizeCache[fileItem.url] {
+                    cell.textField?.stringValue = ByteCountFormatter.listView.string(fromByteCount: cachedSize)
+                } else {
+                    cell.textField?.stringValue = "--"
+                    startFolderSizeCalculationIfNeeded(for: fileItem)
+                }
             } else if let size = fileItem.fileSize {
                 cell.textField?.stringValue = ByteCountFormatter.listView.string(fromByteCount: Int64(size))
             } else {
@@ -394,6 +420,18 @@ extension ListViewController: NSOutlineViewDelegate, NSTextFieldDelegate {
             cell.textField?.stringValue = fileItem.kindDescription ?? ""
         default:
             break
+        }
+    }
+
+    private func startFolderSizeCalculationIfNeeded(for fileItem: FileItem) {
+        guard pendingSizeCalculators[fileItem.url] == nil else { return }
+        let calculator = FolderSizeCalculator()
+        pendingSizeCalculators[fileItem.url] = calculator
+        calculator.calculate(fileItem.url) { [weak self] bytes in
+            guard let self else { return }
+            self.pendingSizeCalculators.removeValue(forKey: fileItem.url)
+            self.folderSizeCache[fileItem.url] = bytes
+            self.outlineView.reloadItem(fileItem)
         }
     }
 

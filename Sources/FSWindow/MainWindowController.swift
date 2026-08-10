@@ -21,11 +21,6 @@ public final class MainWindowController: NSWindowController {
     private var currentViewMode: ViewMode = ViewModePreferenceStore.loadViewMode()
     private var currentRootURL: URL
 
-    // Keyed by file so re-choosing "Get Info" on the same item just
-    // refocuses its existing panel instead of spawning duplicates;
-    // real Finder does the same.
-    private var getInfoWindows: [URL: GetInfoWindowController] = [:]
-
     // Quick Look's spacebar shortcut isn't a standard NSMenuItem key
     // equivalent (plain space, no modifier), so it's caught with a local
     // event monitor scoped to this app's own windows instead. The same
@@ -33,6 +28,8 @@ public final class MainWindowController: NSWindowController {
     // open — QLPreviewPanel only binds Left/Right itself, so Up/Down
     // otherwise silently does nothing while the panel is key.
     private var spacebarMonitor: Any?
+    // テーマ／文字サイズが環境設定から変更されたときに全ビューへ反映する。
+    private var appearanceObserver: NSObjectProtocol?
     // Keeps the browser's selection highlight following along as the
     // user steps through Quick Look — both our own Up/Down handling and
     // QLPreviewPanel's native Left/Right change this property, so
@@ -75,7 +72,11 @@ public final class MainWindowController: NSWindowController {
 
     private lazy var viewModeControl: NSSegmentedControl = {
         let control = NSSegmentedControl(
-            labels: ["Icon", "List", "Column"],
+            labels: [
+                NSLocalizedString("Icon", comment: "表示切り替え: アイコン表示"),
+                NSLocalizedString("List", comment: "表示切り替え: リスト表示"),
+                NSLocalizedString("Column", comment: "表示切り替え: カラム表示"),
+            ],
             trackingMode: .selectOne,
             target: self,
             action: #selector(viewModeChanged(_:))
@@ -101,6 +102,11 @@ public final class MainWindowController: NSWindowController {
             defer: false
         )
         window.title = "ClassicFinder"
+        // AppDelegate が NSApp.appearance を .aqua に固定していても、Apple
+        // Silicon＋最近の macOS ではツールバー/タイトルバー付近の一部マテリアル
+        // がシステムのダーク設定を拾ってしまうことがある。ウィンドウ単体にも
+        // 明示的に appearance を指定し、常にライトな Aqua で描画させる。
+        window.appearance = NSAppearance(named: .aqua)
         // Snow Leopard's window chrome was a continuous light-gray
         // gradient across titlebar + toolbar, not the modern flat-white
         // unified bar. Making the titlebar transparent lets the window's
@@ -108,7 +114,6 @@ public final class MainWindowController: NSWindowController {
         // keeps the toolbar strip in that same continuous surface instead
         // of drawing its own separate vibrancy material underneath.
         window.titlebarAppearsTransparent = true
-        window.backgroundColor = NSColor(calibratedWhite: 0.85, alpha: 1.0)
         window.minSize = NSSize(width: 640, height: 400)
         window.setFrameAutosaveName("MainWindow")
         // setFrameAutosaveName restores a previously-saved frame if one
@@ -130,6 +135,12 @@ public final class MainWindowController: NSWindowController {
         setUpToolbar()
         showActiveViewController()
         updateStatusBar()
+        applyAppearancePreferences()
+        appearanceObserver = NotificationCenter.default.addObserver(
+            forName: .appearancePreferencesDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.applyAppearancePreferences()
+        }
 
         columnVC.onSelectionChange = { [weak self] _ in
             // File selection within a column doesn't change navigation
@@ -160,6 +171,9 @@ public final class MainWindowController: NSWindowController {
         listVC.onShowInfo = { [weak self] fileItem in self?.showGetInfo(for: fileItem) }
         iconVC.onShowInfo = { [weak self] fileItem in self?.showGetInfo(for: fileItem) }
 
+        listVC.onOpenInNewWindow = { [weak self] fileItem in self?.openInNewWindow(fileItem.url) }
+        iconVC.onOpenInNewWindow = { [weak self] fileItem in self?.openInNewWindow(fileItem.url) }
+
         listVC.onSelectionChange = { [weak self] in self?.quickLookSelectionDidChange() }
         iconVC.onSelectionChange = { [weak self] in self?.quickLookSelectionDidChange() }
 
@@ -170,6 +184,9 @@ public final class MainWindowController: NSWindowController {
     deinit {
         if let spacebarMonitor {
             NSEvent.removeMonitor(spacebarMonitor)
+        }
+        if let appearanceObserver {
+            NotificationCenter.default.removeObserver(appearanceObserver)
         }
         quickLookIndexObservation?.invalidate()
         searchQuery?.stop()
@@ -311,6 +328,12 @@ public final class MainWindowController: NSWindowController {
     }
 
     private func refreshAllViews() {
+        // ファイル操作（コピー/移動/リネーム/削除等）はどのディレクトリの
+        // リスティングも古くする可能性があるため、個別のディレクトリだけを
+        // 狙い撃ちせず全体を破棄する。3ビューとステータスバーがこの直後に
+        // それぞれ再取得するので、実際に再読み込みされるのは画面に必要な
+        // 範囲だけに収まる。
+        DirectoryListingCache.invalidateAll()
         columnVC.refresh()
         listVC.refresh()
         iconVC.refresh()
@@ -318,8 +341,29 @@ public final class MainWindowController: NSWindowController {
     }
 
     private func updateStatusBar() {
-        let count = FileListing.contents(of: currentRootURL).count
+        let count = DirectoryListingCache.contents(of: currentRootURL).count
         statusBarView.update(itemCount: count, directoryURL: currentRootURL)
+    }
+
+    /// 環境設定（テーマ／文字サイズ）を読み直し、ウィンドウ本体と全ての
+    /// 子ビューへ反映する。初期化時と、環境設定パネルでの変更通知の両方
+    /// から呼ばれる。
+    private func applyAppearancePreferences() {
+        let theme = AppearancePreferenceStore.theme
+        let textSize = AppearancePreferenceStore.textSize
+
+        switch theme {
+        case .graphite10_6:
+            window?.backgroundColor = NSColor(calibratedWhite: 0.85, alpha: 1.0)
+        case .metal10_4:
+            window?.backgroundColor = MetalTexture.backgroundColor
+        }
+        statusBarView.applyTheme(theme)
+
+        statusBarView.applyTextSize(textSize)
+        sidebarVC.applyTextSize(textSize)
+        listVC.applyTextSize(textSize)
+        iconVC.applyTextSize(textSize)
     }
 
     // MARK: - Quick Look
@@ -386,7 +430,7 @@ public final class MainWindowController: NSWindowController {
     /// whichever one was selected, rather than being limited to a
     /// single-item selection with nothing to page to.
     private func quickLookItems() -> [FileItem] {
-        FileListing.contents(of: currentRootURL)
+        DirectoryListingCache.contents(of: currentRootURL)
     }
 
     private func selectCurrentQuickLookIndex(in panel: QLPreviewPanel) {
@@ -427,7 +471,7 @@ public final class MainWindowController: NSWindowController {
     // MARK: - Search
 
     private func setUpSearchField() {
-        searchField.placeholderString = "Search This Folder"
+        searchField.placeholderString = NSLocalizedString("Search This Folder", comment: "検索フィールドのプレースホルダー")
         searchField.target = self
         searchField.action = #selector(searchFieldChanged)
         searchField.sendsSearchStringImmediately = true
@@ -501,25 +545,13 @@ public final class MainWindowController: NSWindowController {
     }
 
     private func showGetInfo(for fileItem: FileItem) {
-        if let existing = getInfoWindows[fileItem.url] {
-            existing.showWindow(nil)
-            existing.window?.makeKeyAndOrderFront(nil)
-            return
-        }
-        let controller = GetInfoWindowController(fileItem: fileItem)
-        getInfoWindows[fileItem.url] = controller
-        NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification, object: controller.window, queue: .main
-        ) { [weak self] _ in
-            self?.getInfoWindows.removeValue(forKey: fileItem.url)
-        }
-        controller.showWindow(nil)
+        GetInfoWindowRegistry.shared.show(for: fileItem)
     }
 
     private func showFileOperationError(_ error: Error) {
         guard let window else { return }
         let alert = NSAlert()
-        alert.messageText = "The operation couldn’t be completed."
+        alert.messageText = NSLocalizedString("The operation couldn’t be completed.", comment: "ファイル操作失敗時のアラートタイトル")
         alert.informativeText = error.localizedDescription
         alert.beginSheetModal(for: window)
     }
@@ -552,7 +584,7 @@ public final class MainWindowController: NSWindowController {
             let newURL = try FileOperations.createNewFolder(in: directory)
             refreshAllViews()
             registerUndo(
-                actionName: "New Folder",
+                actionName: NSLocalizedString("New Folder", comment: "取り消し操作名: 新規フォルダ"),
                 undo: { [weak self] in
                     _ = try? FileOperations.moveToTrash(newURL)
                     self?.refreshAllViews()
@@ -572,7 +604,7 @@ public final class MainWindowController: NSWindowController {
             do {
                 let duplicateURL = try FileOperations.duplicate(url)
                 registerUndo(
-                    actionName: "Duplicate",
+                    actionName: NSLocalizedString("Duplicate", comment: "取り消し操作名: 複製"),
                     undo: { [weak self] in
                         _ = try? FileOperations.moveToTrash(duplicateURL)
                         self?.refreshAllViews()
@@ -594,7 +626,7 @@ public final class MainWindowController: NSWindowController {
             do {
                 let trashedURL = try FileOperations.moveToTrash(url)
                 registerUndo(
-                    actionName: "Move to Trash",
+                    actionName: NSLocalizedString("Move to Trash", comment: "取り消し操作名: ゴミ箱に入れる"),
                     undo: { [weak self] in
                         _ = try? FileOperations.move(trashedURL, into: url.deletingLastPathComponent())
                         self?.refreshAllViews()
@@ -627,6 +659,72 @@ public final class MainWindowController: NSWindowController {
         guard let url = activeBrowser.selectedURLs.first else { return }
         showGetInfo(for: FileItem(url: url))
     }
+
+    // MARK: - Go menu actions
+
+    @objc public func goToEnclosingFolder(_ sender: Any?) {
+        let parent = currentRootURL.deletingLastPathComponent()
+        guard parent.path != currentRootURL.path else { return }
+        navigate(to: parent, pushHistory: true)
+    }
+
+    // MARK: - File copy / paste (⌘C / ⌘V)
+    //
+    // Edit メニューの Copy/Paste 項目は NSText.copy(_:)/paste(_:) と同名
+    // ("copy:"/"paste:") の target なしアクションで、テキスト編集中は NSText
+    // 側が先にレスポンダチェーンで見つかる。ここで同名セレクタを実装する
+    // ことで、テキストフィールド編集中でなければ（＝ファイルブラウザに
+    // フォーカスがあれば）ここまでバブルアップしてファイルのコピー/貼り付け
+    // として扱われる。
+
+    @objc public func copy(_ sender: Any?) {
+        let urls = activeBrowser.selectedURLs
+        guard !urls.isEmpty else { return }
+        FilePasteboard.write(urls)
+    }
+
+    @objc public func paste(_ sender: Any?) {
+        let sourceURLs = FilePasteboard.readURLs()
+        guard !sourceURLs.isEmpty else { return }
+        let destinationDirectory = activeBrowser.currentDirectoryURL
+        var pastedURLs: [URL] = []
+        for sourceURL in sourceURLs {
+            if let pastedURL = try? FileOperations.copy(sourceURL, into: destinationDirectory) {
+                pastedURLs.append(pastedURL)
+            }
+        }
+        guard !pastedURLs.isEmpty else { return }
+        refreshAllViews()
+        registerUndo(
+            actionName: NSLocalizedString("Paste", comment: "取り消し操作名: 貼り付け"),
+            undo: { [weak self] in
+                for url in pastedURLs {
+                    _ = try? FileOperations.moveToTrash(url)
+                }
+                self?.refreshAllViews()
+            },
+            redo: { [weak self] in
+                for sourceURL in sourceURLs {
+                    _ = try? FileOperations.copy(sourceURL, into: destinationDirectory)
+                }
+                self?.refreshAllViews()
+            }
+        )
+    }
+
+    // MARK: - Open in New Window
+
+    /// フォルダの右クリックメニュー「別ウィンドウで開く」から呼ばれる。
+    /// AppDelegate がウィンドウ一覧を一元管理しているので、そちらに委譲する。
+    func openInNewWindow(_ url: URL) {
+        (NSApp.delegate as? AppWindowOpening)?.openNewWindow(rootURL: url)
+    }
+}
+
+/// AppDelegate（ClassicFinderApp モジュール）へ直接依存せずに新規ウィンドウを
+/// 開くための最小限のプロトコル。AppDelegate 側でこれに準拠させる。
+public protocol AppWindowOpening: AnyObject {
+    func openNewWindow(rootURL: URL)
 }
 
 extension MainWindowController: NSMenuItemValidation {
@@ -637,6 +735,12 @@ extension MainWindowController: NSMenuItemValidation {
             return !activeBrowser.selectedURLs.isEmpty
         case #selector(toggleQuickLook(_:)):
             return !activeBrowser.selectedURLs.isEmpty
+        case #selector(goToEnclosingFolder(_:)):
+            return currentRootURL.deletingLastPathComponent().path != currentRootURL.path
+        case #selector(copy(_:)):
+            return !activeBrowser.selectedURLs.isEmpty
+        case #selector(paste(_:)):
+            return !FilePasteboard.readURLs().isEmpty
         default:
             return true
         }
@@ -670,17 +774,17 @@ extension MainWindowController: NSToolbarDelegate {
         switch itemIdentifier {
         case .navigation:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-            item.label = "Back/Forward"
+            item.label = NSLocalizedString("Back/Forward", comment: "ツールバー項目: 進む/戻るボタン")
             item.view = navigationControl
             return item
         case .viewMode:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-            item.label = "View"
+            item.label = NSLocalizedString("View", comment: "ツールバー項目: 表示切り替え")
             item.view = viewModeControl
             return item
         case .search:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-            item.label = "Search"
+            item.label = NSLocalizedString("Search", comment: "ツールバー項目: 検索")
             item.view = searchField
             item.minSize = NSSize(width: 120, height: searchField.intrinsicContentSize.height)
             item.maxSize = NSSize(width: 240, height: searchField.intrinsicContentSize.height)

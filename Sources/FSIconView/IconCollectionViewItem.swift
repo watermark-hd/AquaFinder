@@ -42,7 +42,7 @@ final class IconCollectionViewItem: NSCollectionViewItem {
 
         let textField = NSTextField(labelWithString: "")
         textField.alignment = .center
-        textField.font = NSFont.systemFont(ofSize: 11)
+        textField.font = NSFont.systemFont(ofSize: TextSize.medium.baseFontSize)
         textField.lineBreakMode = .byTruncatingMiddle
         textField.maximumNumberOfLines = 2
         textField.translatesAutoresizingMaskIntoConstraints = false
@@ -95,9 +95,10 @@ final class IconCollectionViewItem: NSCollectionViewItem {
         }
     }
 
-    func configure(with fileItem: FileItem) {
+    func configure(with fileItem: FileItem, textSize: TextSize) {
         self.fileItem = fileItem
         imageView?.image = IconCache.icon(for: fileItem.url)
+        textField?.font = NSFont.systemFont(ofSize: textSize.baseFontSize)
         textField?.stringValue = fileItem.name
         textField?.isEditable = false
 

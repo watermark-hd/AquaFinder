@@ -20,6 +20,13 @@
     <string>ClassicFinder</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>ja</string>
+    </array>
     <key>LSMinimumSystemVersion</key>
     <string>10.15</string>
     <key>NSHighResolutionCapable</key>

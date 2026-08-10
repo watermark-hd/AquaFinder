@@ -13,6 +13,10 @@ public final class IconViewController: NSViewController {
     /// the actual panel is MainWindowController's job (it owns the set of
     /// open Get Info windows), this view just reports the request.
     public var onShowInfo: ((FileItem) -> Void)?
+    /// Fired when "Open in New Window" is chosen from the right-click menu
+    /// on a folder — MainWindowController delegates the actual window
+    /// creation to AppDelegate.
+    public var onOpenInNewWindow: ((FileItem) -> Void)?
     /// Fired on any selection change — MainWindowController uses this to
     /// keep an open Quick Look panel in sync without caring which view
     /// mode is actually active.
@@ -35,6 +39,7 @@ public final class IconViewController: NSViewController {
     private let scrollView = NSScrollView()
     private var items: [FileItem] = []
     private var rootURL: URL
+    private var textSize: TextSize = AppearancePreferenceStore.textSize
 
     private static let itemIdentifier = NSUserInterfaceItemIdentifier("IconItem")
     private let dragModifierTracker = DragModifierTracker()
@@ -83,8 +88,13 @@ public final class IconViewController: NSViewController {
         reload()
     }
 
+    public func applyTextSize(_ textSize: TextSize) {
+        self.textSize = textSize
+        collectionView.reloadData()
+    }
+
     private func reload() {
-        items = FileListing.contents(of: rootURL)
+        items = DirectoryListingCache.contents(of: rootURL)
         collectionView.reloadData()
     }
 
@@ -171,7 +181,8 @@ public final class IconViewController: NSViewController {
                 }
                 self?.reload()
                 self?.onFileSystemChange?()
-            }
+            },
+            onOpenInNewWindow: { [weak self] in self?.onOpenInNewWindow?(fileItem) }
         )
         menuItems.forEach { menu.addItem($0) }
         return menu
@@ -229,7 +240,7 @@ extension IconViewController: NSCollectionViewDataSource {
     ) -> NSCollectionViewItem {
         let item = collectionView.makeItem(withIdentifier: Self.itemIdentifier, for: indexPath)
         guard let iconItem = item as? IconCollectionViewItem else { return item }
-        iconItem.configure(with: items[indexPath.item])
+        iconItem.configure(with: items[indexPath.item], textSize: textSize)
         iconItem.onCommitRename = { [weak self] fileItem, newName in
             self?.commitRename(fileItem, to: newName)
         }

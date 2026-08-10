@@ -13,7 +13,9 @@ public enum LabelColor: Int, CaseIterable {
     case red = 6
     case orange = 7
 
-    public var localizedName: String {
+    /// ディスク上のタグ名（実 Finder のタグと相互運用するため常に英語固定）。
+    /// UI表示には使わない — 表示名は `displayName` を使うこと。
+    fileprivate var finderTagName: String {
         switch self {
         case .none: return "None"
         case .gray: return "Gray"
@@ -23,6 +25,20 @@ public enum LabelColor: Int, CaseIterable {
         case .yellow: return "Yellow"
         case .red: return "Red"
         case .orange: return "Orange"
+        }
+    }
+
+    /// UI表示用のローカライズ名。
+    public var displayName: String {
+        switch self {
+        case .none: return NSLocalizedString("None", comment: "ラベルカラー: なし")
+        case .gray: return NSLocalizedString("Gray", comment: "ラベルカラー: グレー")
+        case .green: return NSLocalizedString("Green", comment: "ラベルカラー: グリーン")
+        case .purple: return NSLocalizedString("Purple", comment: "ラベルカラー: パープル")
+        case .blue: return NSLocalizedString("Blue", comment: "ラベルカラー: ブルー")
+        case .yellow: return NSLocalizedString("Yellow", comment: "ラベルカラー: イエロー")
+        case .red: return NSLocalizedString("Red", comment: "ラベルカラー: レッド")
+        case .orange: return NSLocalizedString("Orange", comment: "ラベルカラー: オレンジ")
         }
     }
 
@@ -36,7 +52,7 @@ public enum LabelColor: Int, CaseIterable {
     /// what's actually wired up. Trade-off: the label shows as a small
     /// named tag chip in real Finder, e.g. "Red", not a bare color dot.)
     static func from(finderTag tag: String) -> LabelColor? {
-        allCases.first { $0 != .none && $0.localizedName.caseInsensitiveCompare(tag) == .orderedSame }
+        allCases.first { $0 != .none && $0.finderTagName.caseInsensitiveCompare(tag) == .orderedSame }
     }
 }
 
@@ -53,7 +69,7 @@ extension FileItem {
         var tags = (try? url.resourceValues(forKeys: [.tagNamesKey]).tagNames) ?? []
         tags.removeAll { LabelColor.from(finderTag: $0) != nil }
         if color != .none {
-            tags.append(color.localizedName)
+            tags.append(color.finderTagName)
         }
         // Swift's URL.resourceValues is read/get-only for tagNames on this
         // SDK; NSURL's setResourceValue(_:forKey:) is the settable path,

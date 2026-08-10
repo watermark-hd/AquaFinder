@@ -33,14 +33,15 @@ public final class GetInfoWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        panel.title = "\(fileItem.name) Info"
+        let titleFormat = NSLocalizedString("%@ Info", comment: "Get Info パネルのタイトル（%@=ファイル名）")
+        panel.title = String(format: titleFormat, fileItem.name)
         panel.isReleasedWhenClosed = false
         super.init(window: panel)
 
         buildUI()
         populate()
         if fileItem.isBrowsable {
-            sizeValueField.stringValue = "Calculating…"
+            sizeValueField.stringValue = NSLocalizedString("Calculating…", comment: "フォルダサイズ計算中の表示")
             sizeCalculator.calculate(fileItem.url) { [weak self] bytes in
                 self?.sizeValueField.stringValue = ByteCountFormatter.getInfo.string(fromByteCount: bytes)
             }
@@ -92,7 +93,7 @@ public final class GetInfoWindowController: NSWindowController {
         disclosureButton.target = self
         disclosureButton.action = #selector(toggleGeneralSection)
 
-        let generalLabel = NSTextField(labelWithString: "General")
+        let generalLabel = NSTextField(labelWithString: NSLocalizedString("General", comment: "Get Info パネル: 一般セクションの見出し"))
         generalLabel.font = NSFont.boldSystemFont(ofSize: 11)
 
         let generalHeaderRow = NSStackView(views: [disclosureButton, generalLabel])
@@ -103,11 +104,21 @@ public final class GetInfoWindowController: NSWindowController {
         generalContentView.orientation = .vertical
         generalContentView.alignment = .leading
         generalContentView.spacing = 4
-        generalContentView.addArrangedSubview(makeRow(label: "Kind:", value: kindValueField))
-        generalContentView.addArrangedSubview(makeRow(label: "Size:", value: sizeValueField))
-        generalContentView.addArrangedSubview(makeRow(label: "Where:", value: whereValueField))
-        generalContentView.addArrangedSubview(makeRow(label: "Created:", value: createdValueField))
-        generalContentView.addArrangedSubview(makeRow(label: "Modified:", value: modifiedValueField))
+        generalContentView.addArrangedSubview(makeRow(
+            label: NSLocalizedString("Kind:", comment: "Get Info パネル: 種類のラベル"), value: kindValueField
+        ))
+        generalContentView.addArrangedSubview(makeRow(
+            label: NSLocalizedString("Size:", comment: "Get Info パネル: サイズのラベル"), value: sizeValueField
+        ))
+        generalContentView.addArrangedSubview(makeRow(
+            label: NSLocalizedString("Where:", comment: "Get Info パネル: 場所のラベル"), value: whereValueField
+        ))
+        generalContentView.addArrangedSubview(makeRow(
+            label: NSLocalizedString("Created:", comment: "Get Info パネル: 作成日のラベル"), value: createdValueField
+        ))
+        generalContentView.addArrangedSubview(makeRow(
+            label: NSLocalizedString("Modified:", comment: "Get Info パネル: 変更日のラベル"), value: modifiedValueField
+        ))
 
         let mainStack = NSStackView(views: [headerStack, swatchRow, NSBox.separatorBox(), generalHeaderRow, generalContentView])
         mainStack.orientation = .vertical
@@ -148,7 +159,11 @@ public final class GetInfoWindowController: NSWindowController {
 
     private func populate() {
         nameField.stringValue = fileItem.name
-        kindValueField.stringValue = fileItem.kindDescription ?? (fileItem.isBrowsable ? "Folder" : "Document")
+        kindValueField.stringValue = fileItem.kindDescription ?? (
+            fileItem.isBrowsable
+                ? NSLocalizedString("Folder", comment: "Get Info パネル: 種類（フォルダ）")
+                : NSLocalizedString("Document", comment: "Get Info パネル: 種類（不明なファイル）")
+        )
         whereValueField.stringValue = fileItem.url.deletingLastPathComponent().path
 
         if !fileItem.isBrowsable {

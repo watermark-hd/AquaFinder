@@ -33,6 +33,12 @@ else
     echo "==> (no Resources/AppIcon.icns yet — app will use the generic icon; run Scripts/make-icon.sh once artwork exists)"
 fi
 
+echo "==> Copying localizations"
+for lproj in Resources/*.lproj; do
+    [ -d "$lproj" ] || continue
+    cp -R "$lproj" "$APP_DIR/Contents/Resources/"
+done
+
 echo "==> Ad-hoc code signing"
 codesign --deep --force --sign - "$APP_DIR"
 

@@ -14,15 +14,11 @@ public final class ColumnBrowserViewController: NSViewController {
     private var lastSelectedItem: FileItem?
 
     // NSBrowser queries numberOfChildrenOfItem/child(_:ofItem:) repeatedly
-    // per column; without this cache each of those re-hit the disk and
-    // re-sorted the folder's contents.
-    private var childrenCache: [URL: [FileItem]] = [:]
-
+    // per column; DirectoryListingCache (shared with List/Icon view and the
+    // status bar) avoids re-hitting the disk and re-sorting the same
+    // folder's contents multiple times per navigation.
     private func children(of url: URL) -> [FileItem] {
-        if let cached = childrenCache[url] { return cached }
-        let result = FileListing.contents(of: url)
-        childrenCache[url] = result
-        return result
+        DirectoryListingCache.contents(of: url)
     }
 
     public init(rootURL: URL) {
@@ -67,7 +63,6 @@ public final class ColumnBrowserViewController: NSViewController {
     public func setRoot(_ url: URL) {
         currentRoot = FileItem(url: url)
         lastSelectedItem = nil
-        childrenCache.removeAll()
         browser.loadColumnZero()
     }
 
@@ -102,7 +97,6 @@ extension ColumnBrowserViewController: SelectionProviding {
     }
 
     public func refresh() {
-        childrenCache.removeValue(forKey: currentDirectoryURL)
         let column = browser.lastColumn
         guard column >= 0 else { return }
         browser.reloadColumn(column)

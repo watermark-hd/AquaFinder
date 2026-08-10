@@ -7,9 +7,9 @@ public enum FileOperationError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidName:
-            return "That name isn’t valid."
+            return NSLocalizedString("That name isn’t valid.", comment: "リネーム/新規作成時に無効な名前が指定されたときのエラー")
         case .destinationExists:
-            return "An item with that name already exists."
+            return NSLocalizedString("An item with that name already exists.", comment: "同名の項目が既に存在するときのエラー")
         }
     }
 }
@@ -111,12 +111,13 @@ public enum FileOperations {
 
     private static func newFolderURL(in directory: URL) -> URL {
         let fm = FileManager.default
-        let base = "untitled folder"
+        let base = NSLocalizedString("untitled folder", comment: "新規フォルダのデフォルト名")
         let first = directory.appendingPathComponent(base)
         if !fm.fileExists(atPath: first.path) { return first }
         var counter = 2
         while true {
-            let candidate = directory.appendingPathComponent("\(base) \(counter)")
+            let format = NSLocalizedString("%@ %d", comment: "同名衝突時に連番を付与した新規フォルダ名（%@=ベース名, %d=連番）")
+            let candidate = directory.appendingPathComponent(String(format: format, base, counter))
             if !fm.fileExists(atPath: candidate.path) { return candidate }
             counter += 1
         }
@@ -126,12 +127,16 @@ public enum FileOperations {
         let fm = FileManager.default
         let ext = url.pathExtension
         let base = url.deletingPathExtension().lastPathComponent
-        let firstName = ext.isEmpty ? "\(base) copy" : "\(base) copy.\(ext)"
+        let firstNameFormat = NSLocalizedString("%@ copy", comment: "複製ファイルのデフォルト名（%@=元のファイル名）")
+        let firstBaseName = String(format: firstNameFormat, base)
+        let firstName = ext.isEmpty ? firstBaseName : "\(firstBaseName).\(ext)"
         let first = directory.appendingPathComponent(firstName)
         if !fm.fileExists(atPath: first.path) { return first }
         var counter = 2
         while true {
-            let name = ext.isEmpty ? "\(base) copy \(counter)" : "\(base) copy \(counter).\(ext)"
+            let nameFormat = NSLocalizedString("%@ copy %d", comment: "複製ファイルの連番付きデフォルト名（%@=元のファイル名, %d=連番）")
+            let baseNameWithCounter = String(format: nameFormat, base, counter)
+            let name = ext.isEmpty ? baseNameWithCounter : "\(baseNameWithCounter).\(ext)"
             let candidate = directory.appendingPathComponent(name)
             if !fm.fileExists(atPath: candidate.path) { return candidate }
             counter += 1

@@ -1,0 +1,105 @@
+/* メニューバー */
+"File" = "ファイル";
+"Edit" = "編集";
+"Go" = "移動";
+
+/* アプリメニュー */
+"Preferences…" = "環境設定…";
+"Quit %@" = "%@を終了";
+
+/* Fileメニュー */
+"New Window" = "新規ウインドウ";
+"New Folder" = "新規フォルダ";
+"Get Info" = "情報を見る";
+"Quick Look" = "クイックルック";
+"Duplicate" = "複製";
+"Rename" = "名称変更";
+"Move to Trash" = "ゴミ箱に入れる";
+"Empty Trash" = "ゴミ箱を空にする";
+"Close Window" = "ウインドウを閉じる";
+
+/* Goメニュー */
+"Enclosing Folder" = "上のフォルダ";
+
+/* Editメニュー */
+"Undo" = "取り消す";
+"Redo" = "やり直す";
+"Cut" = "カット";
+"Copy" = "コピー";
+"Paste" = "ペースト";
+"Select All" = "すべてを選択";
+
+/* 右クリックメニュー */
+"Open in New Window" = "新規ウインドウで開く";
+"Color Label" = "カラーラベル";
+
+/* ツールバー */
+"Back/Forward" = "戻る/進む";
+"View" = "表示";
+"Search" = "検索";
+
+/* 表示切り替え */
+"Icon" = "アイコン";
+"List" = "リスト";
+"Column" = "カラム";
+
+/* リスト表示の列見出し */
+"Name" = "名前";
+"Date Modified" = "変更日";
+"Size" = "サイズ";
+"Kind" = "種類";
+
+/* サイドバー */
+"DEVICES" = "デバイス";
+"PLACES" = "場所";
+
+/* 検索フィールド */
+"Search This Folder" = "このフォルダを検索";
+
+/* ステータスバー */
+"1 item" = "1個の項目";
+"%d items" = "%d個の項目";
+"%1$@, %2$@ available" = "%1$@、%2$@ 使用可能";
+
+/* ファイルのデフォルト名 */
+"untitled folder" = "無題フォルダ";
+"%@ %d" = "%@ %d";
+"%@ copy" = "%@のコピー";
+"%@ copy %d" = "%@のコピー %d";
+
+/* エラーメッセージ */
+"That name isn’t valid." = "その名前は使用できません。";
+"An item with that name already exists." = "その名前の項目はすでに存在します。";
+"The operation couldn’t be completed." = "操作を完了できませんでした。";
+
+/* ラベルカラー */
+"None" = "なし";
+"Gray" = "グレイ";
+"Green" = "グリーン";
+"Purple" = "パープル";
+"Blue" = "ブルー";
+"Yellow" = "イエロー";
+"Red" = "レッド";
+"Orange" = "オレンジ";
+
+/* Get Info パネル */
+"%@ Info" = "%@の情報";
+"Calculating…" = "計算中…";
+"General" = "一般";
+"Kind:" = "種類:";
+"Size:" = "サイズ:";
+"Where:" = "場所:";
+"Created:" = "作成日:";
+"Modified:" = "変更日:";
+"Folder" = "フォルダ";
+"Document" = "書類";
+
+/* 環境設定パネル */
+"Preferences" = "環境設定";
+"Theme:" = "テーマ:";
+"Text Size:" = "文字サイズ:";
+"Graphite (10.6)" = "グラファイト（10.6）";
+"Brushed Metal (10.4)" = "ブラッシュドメタル（10.4）";
+"Small" = "小";
+"Medium" = "中";
+"Large" = "大";

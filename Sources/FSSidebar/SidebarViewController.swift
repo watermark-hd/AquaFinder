@@ -21,6 +21,7 @@ public final class SidebarViewController: NSViewController {
     private let dragModifierTracker = DragModifierTracker()
     private let springLoadTimer = SpringLoadTimer()
     private var sections: [SidebarSection] = []
+    private var textSize: TextSize = AppearancePreferenceStore.textSize
 
     public override func loadView() {
         view = NSView()
@@ -29,8 +30,16 @@ public final class SidebarViewController: NSViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         sections = [
-            SidebarSection(title: "DEVICES", items: VolumeInfo.mountedVolumes()),
-            SidebarSection(title: "PLACES", items: WellKnownLocations.places()),
+            SidebarSection(
+                kind: .devices,
+                title: NSLocalizedString("DEVICES", comment: "サイドバーのセクション見出し: デバイス"),
+                items: VolumeInfo.mountedVolumes()
+            ),
+            SidebarSection(
+                kind: .places,
+                title: NSLocalizedString("PLACES", comment: "サイドバーのセクション見出し: よく使う項目"),
+                items: WellKnownLocations.places()
+            ),
         ]
         setUpOutlineView()
         outlineView.reloadData()
@@ -44,10 +53,16 @@ public final class SidebarViewController: NSViewController {
         }
     }
 
+    public func applyTextSize(_ textSize: TextSize) {
+        self.textSize = textSize
+        outlineView.rowHeight = textSize.sidebarRowHeight
+        outlineView.reloadData()
+    }
+
     /// Selects Home under PLACES, which also drives the initial navigation
     /// state via the same `onSelect` path real clicks go through.
     public func selectDefaultLocation() {
-        guard let places = sections.first(where: { $0.title == "PLACES" }),
+        guard let places = sections.first(where: { $0.kind == .places }),
               let home = places.items.first else { return }
         let row = outlineView.row(forItem: home)
         guard row >= 0 else { return }
@@ -60,7 +75,7 @@ public final class SidebarViewController: NSViewController {
         outlineView.outlineTableColumn = column
         outlineView.headerView = nil
         outlineView.selectionHighlightStyle = .sourceList
-        outlineView.rowHeight = 20
+        outlineView.rowHeight = textSize.sidebarRowHeight
         outlineView.floatsGroupRows = false
         outlineView.dataSource = self
         outlineView.delegate = self
@@ -85,10 +100,20 @@ public final class SidebarViewController: NSViewController {
 /// row(forItem:)) has something stable to key off; FileItem is a value type
 /// and only appears as a leaf child, never needs that stability itself.
 private final class SidebarSection {
+    // ローカライズされた title で判別すると、システム言語が英語以外の
+    // ときに selectDefaultLocation() 等の識別が壊れるため、表示に使わない
+    // 安定した種別を別途持たせる。
+    enum Kind: Equatable {
+        case devices
+        case places
+    }
+
+    let kind: Kind
     let title: String
     let items: [FileItem]
 
-    init(title: String, items: [FileItem]) {
+    init(kind: Kind, title: String, items: [FileItem]) {
+        self.kind = kind
         self.title = title
         self.items = items
     }
@@ -186,9 +211,9 @@ extension SidebarViewController: NSOutlineViewDelegate {
         } else {
             textField = NSTextField(labelWithString: "")
             textField.identifier = identifier
-            textField.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
             textField.textColor = .secondaryLabelColor
         }
+        textField.font = NSFont.systemFont(ofSize: textSize.baseFontSize, weight: .semibold)
         textField.stringValue = title
         return textField
     }
@@ -224,6 +249,7 @@ extension SidebarViewController: NSOutlineViewDelegate {
                 textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
             ])
         }
+        cell.textField?.font = NSFont.systemFont(ofSize: textSize.baseFontSize)
         cell.textField?.stringValue = fileItem.name
         cell.imageView?.image = IconCache.icon(for: fileItem.url)
         return cell
