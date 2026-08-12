@@ -11,8 +11,9 @@ import FSGetInfo
 public final class MainWindowController: NSWindowController {
     /// 初回起動時（自動保存されたフレーム/サイドバー幅がまだ無いとき）の
     /// デフォルトサイズ。環境設定の「ウィンドウサイズを既定に戻す」からも使う。
-    private static let defaultWindowSize = NSSize(width: 860, height: 560)
+    private static let defaultWindowSize = NSSize(width: 1075, height: 700)
     private static let defaultSidebarWidth: CGFloat = 150
+    private static let windowFrameAutosaveName = "MainWindow"
 
     private let sidebarVC = SidebarViewController()
     private let columnVC: ColumnBrowserViewController
@@ -124,7 +125,7 @@ public final class MainWindowController: NSWindowController {
         // of drawing its own separate vibrancy material underneath.
         window.titlebarAppearsTransparent = true
         window.minSize = NSSize(width: 640, height: 400)
-        window.setFrameAutosaveName("MainWindow")
+        window.setFrameAutosaveName(Self.windowFrameAutosaveName)
         // setFrameAutosaveName restores a previously-saved frame if one
         // exists; guard against restoring a degenerate tiny frame (e.g.
         // saved during development while the window was being scripted
@@ -137,8 +138,15 @@ public final class MainWindowController: NSWindowController {
         // The frame at this point is authoritative — either genuinely
         // restored from a prior launch, or the default just set above.
         let intendedWidth = window.frame.width
+        let intendedHeight = window.frame.height
 
         super.init(window: window)
+
+        // setFrameAutosaveName only restores a saved frame automatically;
+        // it doesn't reliably persist *new* ones back to defaults on every
+        // resize/move on its own. Saving explicitly here is what actually
+        // makes "remember the size I last used" work.
+        window.delegate = self
 
         historyStack = [rootURL]
         historyIndex = 0
@@ -160,6 +168,18 @@ public final class MainWindowController: NSWindowController {
             window.setFrame(frame, display: false)
         }
         setUpToolbar()
+        // setUpToolbar() above legitimately grows the height further to
+        // fit the toolbar strip, so this only ever fires if the same
+        // layout-pass collapse noted above ate into the height too —
+        // pulling it back up to (at least) what was restored/intended,
+        // on top of whatever the toolbar itself already added.
+        if window.frame.height < intendedHeight {
+            var frame = window.frame
+            let centerY = frame.midY
+            frame.size.height = intendedHeight
+            frame.origin.y = centerY - intendedHeight / 2
+            window.setFrame(frame, display: false)
+        }
         showActiveViewController()
         updateStatusBar()
         applyAppearancePreferences()
@@ -873,6 +893,16 @@ extension MainWindowController: QLPreviewPanelDataSource {
 }
 
 extension MainWindowController: QLPreviewPanelDelegate {}
+
+extension MainWindowController: NSWindowDelegate {
+    public func windowDidResize(_ notification: Notification) {
+        window?.saveFrame(usingName: Self.windowFrameAutosaveName)
+    }
+
+    public func windowDidMove(_ notification: Notification) {
+        window?.saveFrame(usingName: Self.windowFrameAutosaveName)
+    }
+}
 
 private extension NSToolbarItem.Identifier {
     static let navigation = NSToolbarItem.Identifier("Navigation")
