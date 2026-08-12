@@ -49,6 +49,16 @@ public final class ListViewController: NSViewController {
     private var pendingSizeCalculators: [URL: FolderSizeCalculator] = [:]
     private var textSize: TextSize = AppearancePreferenceStore.textSize
 
+    private enum SortKey: String {
+        case name = "Name"
+        case dateModified = "DateModified"
+        case size = "Size"
+        case kind = "Kind"
+    }
+
+    private var sortKey: SortKey = .name
+    private var sortAscending = true
+
     public init(rootURL: URL) {
         self.rootURL = rootURL
         super.init(nibName: nil, bundle: nil)
@@ -110,23 +120,31 @@ public final class ListViewController: NSViewController {
         let nameColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("Name"))
         nameColumn.title = NSLocalizedString("Name", comment: "リスト表示の列見出し: 名前")
         nameColumn.width = 260
+        nameColumn.sortDescriptorPrototype = NSSortDescriptor(key: SortKey.name.rawValue, ascending: true)
 
         let dateColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("DateModified"))
         dateColumn.title = NSLocalizedString("Date Modified", comment: "リスト表示の列見出し: 変更日")
         dateColumn.width = 150
+        dateColumn.sortDescriptorPrototype = NSSortDescriptor(key: SortKey.dateModified.rawValue, ascending: true)
 
         let sizeColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("Size"))
         sizeColumn.title = NSLocalizedString("Size", comment: "リスト表示の列見出し: サイズ")
         sizeColumn.width = 80
+        sizeColumn.sortDescriptorPrototype = NSSortDescriptor(key: SortKey.size.rawValue, ascending: true)
 
         let kindColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("Kind"))
         kindColumn.title = NSLocalizedString("Kind", comment: "リスト表示の列見出し: 種類")
         kindColumn.width = 120
+        kindColumn.sortDescriptorPrototype = NSSortDescriptor(key: SortKey.kind.rawValue, ascending: true)
 
         [nameColumn, dateColumn, sizeColumn, kindColumn].forEach { outlineView.addTableColumn($0) }
         outlineView.outlineTableColumn = nameColumn
         outlineView.dataSource = self
         outlineView.delegate = self
+        // Name-ascending by default, matching real Finder and the order
+        // FileListing/DirectoryListingCache already hand back — clicking
+        // a header toggles/re-targets from here via sortDescriptorsDidChange.
+        outlineView.sortDescriptors = [nameColumn.sortDescriptorPrototype!]
         outlineView.usesAlternatingRowBackgroundColors = true
         outlineView.rowHeight = textSize.listRowHeight
         outlineView.target = self
@@ -176,7 +194,42 @@ public final class ListViewController: NSViewController {
     }
 
     private func children(of url: URL) -> [FileItem] {
-        DirectoryListingCache.contents(of: url)
+        sorted(DirectoryListingCache.contents(of: url))
+    }
+
+    private func sorted(_ items: [FileItem]) -> [FileItem] {
+        items.sorted { lhs, rhs in
+            let comparison = compare(lhs, rhs)
+            return sortAscending ? comparison == .orderedAscending : comparison == .orderedDescending
+        }
+    }
+
+    private func compare(_ lhs: FileItem, _ rhs: FileItem) -> ComparisonResult {
+        switch sortKey {
+        case .name:
+            return lhs.name.localizedStandardCompare(rhs.name)
+        case .dateModified:
+            return compare(lhs.modificationDate ?? .distantPast, rhs.modificationDate ?? .distantPast)
+        case .size:
+            return compare(sizeForSorting(lhs), sizeForSorting(rhs))
+        case .kind:
+            return (lhs.kindDescription ?? "").localizedStandardCompare(rhs.kindDescription ?? "")
+        }
+    }
+
+    private func compare<T: Comparable>(_ lhs: T, _ rhs: T) -> ComparisonResult {
+        if lhs == rhs { return .orderedSame }
+        return lhs < rhs ? .orderedAscending : .orderedDescending
+    }
+
+    /// Folder sizes are only known once FolderSizeCalculator finishes (see
+    /// startFolderSizeCalculationIfNeeded below) — folders not yet
+    /// calculated sort as 0 rather than blocking on a synchronous walk.
+    private func sizeForSorting(_ item: FileItem) -> Int64 {
+        if item.isBrowsable {
+            return folderSizeCache[item.url] ?? 0
+        }
+        return Int64(item.fileSize ?? 0)
     }
 }
 
@@ -264,7 +317,7 @@ extension ListViewController: NSOutlineViewDataSource {
     }
 
     public func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        if item == nil, let searchResults { return searchResults[index] }
+        if item == nil, let searchResults { return sorted(searchResults)[index] }
         let url = (item as? FileItem)?.url ?? rootURL
         return children(of: url)[index]
     }
@@ -323,6 +376,15 @@ extension ListViewController: NSOutlineViewDataSource {
 extension ListViewController: NSOutlineViewDelegate, NSTextFieldDelegate {
     public func outlineViewSelectionDidChange(_ notification: Notification) {
         onSelectionChange?()
+    }
+
+    public func outlineView(_ outlineView: NSOutlineView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+        guard let descriptor = outlineView.sortDescriptors.first,
+              let key = descriptor.key, let newSortKey = SortKey(rawValue: key)
+        else { return }
+        sortKey = newSortKey
+        sortAscending = descriptor.ascending
+        outlineView.reloadData()
     }
 
     public func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
