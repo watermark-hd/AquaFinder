@@ -13,7 +13,11 @@ public final class MainWindowController: NSWindowController {
     /// デフォルトサイズ。環境設定の「ウィンドウサイズを既定に戻す」からも使う。
     private static let defaultWindowSize = NSSize(width: 1075, height: 700)
     private static let defaultSidebarWidth: CGFloat = 150
-    private static let windowFrameAutosaveName = "MainWindow"
+    private static let windowFrameDefaultsKey = "AquaFinderMainWindowFrame"
+    // Captured in init from the just-restored (or default) frame, and
+    // re-applied once more in showWindow(_:) — see the doc comment there
+    // for why a single re-assertion partway through init isn't enough.
+    private var intendedWindowSize: NSSize = .zero
 
     private let sidebarVC = SidebarViewController()
     private let columnVC: ColumnBrowserViewController
@@ -125,28 +129,31 @@ public final class MainWindowController: NSWindowController {
         // of drawing its own separate vibrancy material underneath.
         window.titlebarAppearsTransparent = true
         window.minSize = NSSize(width: 640, height: 400)
-        window.setFrameAutosaveName(Self.windowFrameAutosaveName)
-        // setFrameAutosaveName restores a previously-saved frame if one
-        // exists; guard against restoring a degenerate tiny frame (e.g.
-        // saved during development while the window was being scripted
-        // around) by resetting to the intended default size whenever the
-        // restored frame falls below a sane floor.
-        if window.frame.width < window.minSize.width || window.frame.height < window.minSize.height {
+        // NSWindow's own setFrameAutosaveName mechanism also saves the
+        // frame automatically on its own, on window close — and that save
+        // can capture a frame that's already been altered by the window's
+        // own teardown (toolbar removal, etc.), silently overwriting the
+        // correct value our own windowDidResize/windowDidMove save below.
+        // Reading/writing a plain UserDefaults key ourselves avoids that
+        // undocumented interference entirely.
+        if let savedFrameString = UserDefaults.standard.string(forKey: Self.windowFrameDefaultsKey) {
+            let savedFrame = NSRectFromString(savedFrameString)
+            if savedFrame.width >= window.minSize.width, savedFrame.height >= window.minSize.height {
+                window.setFrame(savedFrame, display: false)
+            } else {
+                window.setContentSize(Self.defaultWindowSize)
+                window.center()
+            }
+        } else {
             window.setContentSize(Self.defaultWindowSize)
+            window.center()
         }
-        window.center()
         // The frame at this point is authoritative — either genuinely
         // restored from a prior launch, or the default just set above.
-        let intendedWidth = window.frame.width
-        let intendedHeight = window.frame.height
+        let intendedWindowSize = window.frame.size
 
         super.init(window: window)
-
-        // setFrameAutosaveName only restores a saved frame automatically;
-        // it doesn't reliably persist *new* ones back to defaults on every
-        // resize/move on its own. Saving explicitly here is what actually
-        // makes "remember the size I last used" work.
-        window.delegate = self
+        self.intendedWindowSize = intendedWindowSize
 
         historyStack = [rootURL]
         historyIndex = 0
@@ -155,31 +162,12 @@ public final class MainWindowController: NSWindowController {
         // Installing the split view's contentViewController above runs an
         // Auto Layout pass that (for reasons not fully pinned down —
         // possibly the split view's content not yet having anything to
-        // resolve a fitting size against) collapses the window's width down
-        // to `minSize.width` every single time, silently discarding
-        // whatever it was set to above. Re-assert just the width (not the
-        // whole frame — setUpToolbar() below still needs to grow the height
-        // to fit the toolbar, which is legitimate and shouldn't be undone).
-        if window.frame.width < intendedWidth {
-            var frame = window.frame
-            let centerX = frame.midX
-            frame.size.width = intendedWidth
-            frame.origin.x = centerX - intendedWidth / 2
-            window.setFrame(frame, display: false)
-        }
+        // resolve a fitting size against) collapses the window down,
+        // silently discarding whatever it was set to above. Re-assert
+        // below, once showActiveViewController() has installed real
+        // content too — that swap has its own fitting-size pass that can
+        // just as easily re-shrink things right after this point.
         setUpToolbar()
-        // setUpToolbar() above legitimately grows the height further to
-        // fit the toolbar strip, so this only ever fires if the same
-        // layout-pass collapse noted above ate into the height too —
-        // pulling it back up to (at least) what was restored/intended,
-        // on top of whatever the toolbar itself already added.
-        if window.frame.height < intendedHeight {
-            var frame = window.frame
-            let centerY = frame.midY
-            frame.size.height = intendedHeight
-            frame.origin.y = centerY - intendedHeight / 2
-            window.setFrame(frame, display: false)
-        }
         showActiveViewController()
         updateStatusBar()
         applyAppearancePreferences()
@@ -236,6 +224,33 @@ public final class MainWindowController: NSWindowController {
 
         setUpSpacebarMonitor()
         setUpSearchField()
+
+        // Assigned last, once the frame has fully settled from everything
+        // above — those layout passes each resize the window in ways
+        // that are legitimate mid-init but would corrupt the saved frame
+        // (via windowDidResize/windowDidMove below) if persisted this early.
+        window.delegate = self
+    }
+
+    /// AppDelegate calls this right after construction to actually put
+    /// the window on screen. That on-screen presentation runs its own
+    /// final Auto Layout pass — on top of the ones already chased during
+    /// init (split view installation, toolbar attachment, swapping in the
+    /// active browsing view) — that can *still* shrink the window down
+    /// from what was restored/intended. This is the last point where a
+    /// correction actually sticks.
+    public override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        guard let window else { return }
+        if window.frame.width < intendedWindowSize.width || window.frame.height < intendedWindowSize.height {
+            var frame = window.frame
+            let centerX = frame.midX
+            let centerY = frame.midY
+            frame.size.width = max(frame.width, intendedWindowSize.width)
+            frame.size.height = max(frame.height, intendedWindowSize.height)
+            frame.origin = NSPoint(x: centerX - frame.width / 2, y: centerY - frame.height / 2)
+            window.setFrame(frame, display: true)
+        }
     }
 
     deinit {
@@ -462,7 +477,11 @@ public final class MainWindowController: NSWindowController {
             let centerY = frame.midY
             frame.size = newSize
             frame.origin = NSPoint(x: centerX - newSize.width / 2, y: centerY - newSize.height / 2)
-            window.setFrame(frame, display: true, animate: true)
+            // Not animated: an animated resize runs asynchronously, so
+            // window.frame (and the frame the windowDidResize-triggered
+            // autosave below captures) wouldn't reliably reflect the
+            // final, fully-settled size at the moment this method returns.
+            window.setFrame(frame, display: true, animate: false)
         }
         splitView?.setPosition(Self.defaultSidebarWidth, ofDividerAt: 0)
     }
@@ -896,11 +915,16 @@ extension MainWindowController: QLPreviewPanelDelegate {}
 
 extension MainWindowController: NSWindowDelegate {
     public func windowDidResize(_ notification: Notification) {
-        window?.saveFrame(usingName: Self.windowFrameAutosaveName)
+        saveWindowFrame()
     }
 
     public func windowDidMove(_ notification: Notification) {
-        window?.saveFrame(usingName: Self.windowFrameAutosaveName)
+        saveWindowFrame()
+    }
+
+    private func saveWindowFrame() {
+        guard let window else { return }
+        UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: Self.windowFrameDefaultsKey)
     }
 }
 
