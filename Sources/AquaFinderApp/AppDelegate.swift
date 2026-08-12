@@ -163,6 +163,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, AppWindowOpening {
         )
         item.keyEquivalentModifierMask = [.command]
         menu.addItem(item)
+        menu.addItem(.separator())
+        let connectItem = NSMenuItem(
+            title: NSLocalizedString("Connect to Server…", comment: "Goメニュー: サーバへ接続"),
+            action: #selector(MainWindowController.connectToServer(_:)), keyEquivalent: "k"
+        )
+        menu.addItem(connectItem)
         return menu
     }
 

@@ -11,7 +11,12 @@ let package = Package(
     name: "AquaFinder",
     platforms: [.macOS(.v10_15)],
     targets: [
-        .target(name: "FSCore"),
+        .target(
+            name: "FSCore",
+            linkerSettings: [
+                .linkedFramework("NetFS"),
+            ]
+        ),
         .target(name: "FSUIKit", dependencies: ["FSCore"]),
         .target(
             name: "FSQuickLook",

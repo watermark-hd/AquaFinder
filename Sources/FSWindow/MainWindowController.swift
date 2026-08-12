@@ -25,6 +25,12 @@ public final class MainWindowController: NSWindowController {
     private var historyIndex = -1
     private var currentViewMode: ViewMode = ViewModePreferenceStore.loadViewMode()
     private var currentRootURL: URL
+    // Watches whichever folder is currently the window's root so changes
+    // made outside the app (Terminal, another app, a second AquaFinder
+    // window) show up without requiring a manual re-navigate. Scoped to
+    // just currentRootURL — matches what List/Icon view actually display
+    // and what the status bar's item count is based on.
+    private let directoryWatcher = DirectoryWatcher()
 
     // Quick Look's spacebar shortcut isn't a standard NSMenuItem key
     // equivalent (plain space, no modifier), so it's caught with a local
@@ -57,13 +63,8 @@ public final class MainWindowController: NSWindowController {
     // all, lazy-initializing it only the moment it's actually needed.
     private var isQuickLookVisible = false
 
-    // Search is scoped to List View only (see the doc comment on
-    // ListViewController.showSearchResults) — starting a search force-
-    // switches to List View and this remembers what to switch back to
-    // once the search field is cleared.
     private let searchField = NSSearchField()
     private var searchQuery: NSMetadataQuery?
-    private var viewModeBeforeSearch: ViewMode?
 
     private lazy var navigationControl: NSSegmentedControl = {
         let control = NSSegmentedControl(
@@ -162,6 +163,8 @@ public final class MainWindowController: NSWindowController {
         showActiveViewController()
         updateStatusBar()
         applyAppearancePreferences()
+        directoryWatcher.onChange = { [weak self] in self?.refreshAllViews() }
+        directoryWatcher.startWatching(rootURL)
         appearanceObserver = NotificationCenter.default.addObserver(
             forName: .appearancePreferencesDidChange, object: nil, queue: .main
         ) { [weak self] _ in
@@ -200,9 +203,11 @@ public final class MainWindowController: NSWindowController {
         iconVC.onFileSystemChange = { [weak self] in self?.refreshAllViews() }
         sidebarVC.onFileSystemChange = { [weak self] in self?.refreshAllViews() }
 
+        columnVC.onShowInfo = { [weak self] fileItem in self?.showGetInfo(for: fileItem) }
         listVC.onShowInfo = { [weak self] fileItem in self?.showGetInfo(for: fileItem) }
         iconVC.onShowInfo = { [weak self] fileItem in self?.showGetInfo(for: fileItem) }
 
+        columnVC.onOpenInNewWindow = { [weak self] fileItem in self?.openInNewWindow(fileItem.url) }
         listVC.onOpenInNewWindow = { [weak self] fileItem in self?.openInNewWindow(fileItem.url) }
         iconVC.onOpenInNewWindow = { [weak self] fileItem in self?.openInNewWindow(fileItem.url) }
 
@@ -341,6 +346,7 @@ public final class MainWindowController: NSWindowController {
         columnVC.setRoot(url)
         listVC.setRoot(url)
         iconVC.setRoot(url)
+        directoryWatcher.startWatching(url)
         updateNavigationButtonsState()
         updateStatusBar()
     }
@@ -417,6 +423,7 @@ public final class MainWindowController: NSWindowController {
             window?.backgroundColor = MetalTexture.backgroundColor
         }
         statusBarView.applyTheme(theme)
+        sidebarVC.applyTheme(theme)
 
         statusBarView.applyTextSize(textSize)
         sidebarVC.applyTextSize(textSize)
@@ -561,13 +568,6 @@ public final class MainWindowController: NSWindowController {
     }
 
     private func startSearch(query: String) {
-        if viewModeBeforeSearch == nil {
-            viewModeBeforeSearch = currentViewMode
-            currentViewMode = .list
-            showActiveViewController()
-            viewModeControl.setSelected(true, forSegment: ViewMode.list.rawValue)
-        }
-
         stopMetadataQuery()
 
         let metadataQuery = NSMetadataQuery()
@@ -595,7 +595,9 @@ public final class MainWindowController: NSWindowController {
             return FileItem(url: URL(fileURLWithPath: path))
         }
         query.enableUpdates()
+        columnVC.showSearchResults(results)
         listVC.showSearchResults(results)
+        iconVC.showSearchResults(results)
     }
 
     private func stopMetadataQuery() {
@@ -609,13 +611,9 @@ public final class MainWindowController: NSWindowController {
 
     private func stopSearch() {
         stopMetadataQuery()
+        columnVC.clearSearchResults()
         listVC.clearSearchResults()
-        if let previous = viewModeBeforeSearch {
-            currentViewMode = previous
-            viewModeBeforeSearch = nil
-            showActiveViewController()
-            viewModeControl.setSelected(true, forSegment: previous.rawValue)
-        }
+        iconVC.clearSearchResults()
     }
 
     private func showGetInfo(for fileItem: FileItem) {
@@ -740,6 +738,49 @@ public final class MainWindowController: NSWindowController {
         let parent = currentRootURL.deletingLastPathComponent()
         guard parent.path != currentRootURL.path else { return }
         navigate(to: parent, pushHistory: true)
+    }
+
+    @objc public func connectToServer(_ sender: Any?) {
+        guard let window else { return }
+        let alert = NSAlert()
+        alert.messageText = NSLocalizedString("Connect to Server", comment: "サーバへ接続ダイアログのタイトル")
+        alert.informativeText = NSLocalizedString(
+            "Enter the server address.", comment: "サーバへ接続ダイアログの説明"
+        )
+        let addressField = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 22))
+        addressField.placeholderString = "smb://server/share"
+        alert.accessoryView = addressField
+        alert.window.initialFirstResponder = addressField
+        alert.addButton(withTitle: NSLocalizedString("Connect", comment: "サーバへ接続ダイアログ: 接続ボタン"))
+        alert.addButton(withTitle: NSLocalizedString("Cancel", comment: "サーバへ接続ダイアログ: キャンセルボタン"))
+
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            let address = addressField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !address.isEmpty else { return }
+            self?.performServerConnect(address)
+        }
+    }
+
+    /// NetFSMountURLSync blocks (network round-trip, possibly a system
+    /// auth prompt) — run it off the main thread so the UI stays
+    /// responsive, then hop back for the sidebar refresh and navigation.
+    private func performServerConnect(_ address: String) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                let mountedURLs = try ServerConnection.connect(to: address)
+                DispatchQueue.main.async {
+                    self?.sidebarVC.refreshVolumeSections()
+                    if let firstURL = mountedURLs.first {
+                        self?.navigate(to: firstURL, pushHistory: true)
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self?.showFileOperationError(error)
+                }
+            }
+        }
     }
 
     // MARK: - File copy / paste (⌘C / ⌘V)

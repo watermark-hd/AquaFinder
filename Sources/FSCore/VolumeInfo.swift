@@ -1,18 +1,31 @@
 import Foundation
 
 public enum VolumeInfo {
-    /// Mounted volumes for the sidebar's "Devices" section, matching
-    /// Snow Leopard's grouping (no "Shared"/network browsing section yet —
-    /// that's part of the deferred Connect-to-Server work).
+    /// Mounted local volumes for the sidebar's "Devices" section — internal
+    /// and removable disks, not network shares (see `sharedVolumes()`).
     public static func mountedVolumes() -> [FileItem] {
-        let keys: [URLResourceKey] = [.isDirectoryKey, .localizedNameKey]
+        volumes(local: true)
+    }
+
+    /// Mounted network shares (smb://, afp://, nfs://…) for the sidebar's
+    /// "Shared" section — whatever Connect to Server has mounted, plus
+    /// anything already mounted outside the app (Finder, `mount_smbfs`, …).
+    public static func sharedVolumes() -> [FileItem] {
+        volumes(local: false)
+    }
+
+    private static func volumes(local: Bool) -> [FileItem] {
+        let keys: [URLResourceKey] = [.isDirectoryKey, .localizedNameKey, .volumeIsLocalKey]
         guard let urls = FileManager.default.mountedVolumeURLs(
             includingResourceValuesForKeys: keys,
             options: [.skipHiddenVolumes]
         ) else {
             return []
         }
-        return urls.map(FileItem.init)
+        return urls.filter { url in
+            let isLocal = (try? url.resourceValues(forKeys: [.volumeIsLocalKey]))?.volumeIsLocal ?? true
+            return isLocal == local
+        }.map(FileItem.init)
     }
 }
 

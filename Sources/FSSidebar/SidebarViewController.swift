@@ -2,12 +2,12 @@ import AppKit
 import FSCore
 import FSUIKit
 
-/// Snow Leopard-era sidebar: two fixed groups, DEVICES (mounted volumes)
-/// and PLACES (Home/Desktop/Documents/Applications) — predates the Big Sur
-/// "Favorites" reshuffle, and there's no Shared/network section yet since
-/// Connect-to-Server is deferred. Uses stock `.sourceList` selection
-/// styling for now; the fully custom Snow-Leopard gradient/appearance pass
-/// is deferred to the Phase 5 polish pass.
+/// Snow Leopard-era sidebar: three groups — DEVICES (local volumes),
+/// PLACES (Home/Desktop/Documents/Applications), and SHARED (mounted
+/// network shares, populated by Connect to Server) — predates the Big Sur
+/// "Favorites" reshuffle. Uses stock `.sourceList` selection styling for
+/// now; the fully custom Snow-Leopard gradient/appearance pass is deferred
+/// to the Phase 5 polish pass.
 public final class SidebarViewController: NSViewController {
     public var onSelect: ((FileItem) -> Void)?
     /// Fired after a file gets dropped onto a sidebar row — the sidebar
@@ -18,10 +18,12 @@ public final class SidebarViewController: NSViewController {
 
     private let outlineView = NSOutlineView()
     private let scrollView = NSScrollView()
+    private let backgroundView = SidebarBackgroundView()
     private let dragModifierTracker = DragModifierTracker()
     private let springLoadTimer = SpringLoadTimer()
     private var sections: [SidebarSection] = []
     private var textSize: TextSize = AppearancePreferenceStore.textSize
+    private var volumeObservers: [NSObjectProtocol] = []
 
     public override func loadView() {
         view = NSView()
@@ -29,6 +31,48 @@ public final class SidebarViewController: NSViewController {
 
     public override func viewDidLoad() {
         super.viewDidLoad()
+        rebuildSections()
+        setUpOutlineView()
+        outlineView.reloadData()
+        sections.forEach { outlineView.expandItem($0) }
+        // viewDidLoad runs while this view is still detached from any
+        // window (MainWindowController assembles the split view before
+        // installing it as the window's content). NSOutlineView only
+        // pushes `isSelected` onto a *custom* row view (rowViewForItem
+        // below) as part of that same live layout/display pass, so
+        // selecting this early leaves the row selected in the outline
+        // view's model but never visibly highlighted. Deferring one run
+        // loop tick — by which point the window is on screen — fixes it.
+        DispatchQueue.main.async { [weak self] in
+            self?.selectDefaultLocation()
+        }
+        // Spring-loading onto a sidebar row navigates there, same as a
+        // click — hovering a drag over "Documents" for ~0.75s takes you
+        // to Documents, matching real Finder's sidebar spring-loading.
+        springLoadTimer.onActivate = { [weak self] url in
+            self?.onSelect?(FileItem(url: url))
+        }
+        // Keeps DEVICES/SHARED current as volumes come and go — a USB
+        // drive plugged in, a network share ejected, or (most commonly)
+        // Connect to Server mounting a new share via refreshSharedVolumes()
+        // below, which itself races this same notification.
+        let center = NSWorkspace.shared.notificationCenter
+        volumeObservers = [
+            center.addObserver(forName: NSWorkspace.didMountNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.refreshVolumeSections()
+            },
+            center.addObserver(forName: NSWorkspace.didUnmountNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.refreshVolumeSections()
+            },
+        ]
+    }
+
+    deinit {
+        let center = NSWorkspace.shared.notificationCenter
+        volumeObservers.forEach { center.removeObserver($0) }
+    }
+
+    private func rebuildSections() {
         sections = [
             SidebarSection(
                 kind: .devices,
@@ -40,23 +84,41 @@ public final class SidebarViewController: NSViewController {
                 title: NSLocalizedString("PLACES", comment: "サイドバーのセクション見出し: よく使う項目"),
                 items: WellKnownLocations.places()
             ),
+            SidebarSection(
+                kind: .shared,
+                title: NSLocalizedString("SHARED", comment: "サイドバーのセクション見出し: 共有（ネットワーク接続）"),
+                items: VolumeInfo.sharedVolumes()
+            ),
         ]
-        setUpOutlineView()
+    }
+
+    /// Called after Connect to Server mounts a new share (and by our own
+    /// mount/unmount notification observers above) — rebuilds DEVICES/
+    /// SHARED from the current volume list and re-expands both groups.
+    /// A background app remounting some virtual/network volume can fire
+    /// this at any moment, including moments after launch, so the current
+    /// selection (usually Home) has to survive a reload it didn't ask for.
+    public func refreshVolumeSections() {
+        let selectedURL = (outlineView.item(atRow: outlineView.selectedRow) as? FileItem)?.url
+        rebuildSections()
         outlineView.reloadData()
         sections.forEach { outlineView.expandItem($0) }
-        selectDefaultLocation()
-        // Spring-loading onto a sidebar row navigates there, same as a
-        // click — hovering a drag over "Documents" for ~0.75s takes you
-        // to Documents, matching real Finder's sidebar spring-loading.
-        springLoadTimer.onActivate = { [weak self] url in
-            self?.onSelect?(FileItem(url: url))
-        }
+        guard let selectedURL,
+              let item = sections.lazy.flatMap(\.items).first(where: { $0.url == selectedURL })
+        else { return }
+        let row = outlineView.row(forItem: item)
+        guard row >= 0 else { return }
+        outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
     }
 
     public func applyTextSize(_ textSize: TextSize) {
         self.textSize = textSize
         outlineView.rowHeight = textSize.sidebarRowHeight
         outlineView.reloadData()
+    }
+
+    public func applyTheme(_ theme: AppTheme) {
+        backgroundView.applyTheme(theme)
     }
 
     /// Selects Home under PLACES, which also drives the initial navigation
@@ -83,7 +145,9 @@ public final class SidebarViewController: NSViewController {
         outlineView.backgroundColor = .clear
         // See the matching comment in IconViewController: NSScrollView's
         // own background drawing doesn't respect the forced Aqua appearance
-        // and can paint black in Dark Mode below the last row.
+        // and can paint black in Dark Mode below the last row. Here it's
+        // also just the wrong color regardless of Dark Mode — backgroundView
+        // (below) paints the real Snow Leopard-style gradient underneath.
         scrollView.drawsBackground = false
 
         scrollView.documentView = outlineView
@@ -91,8 +155,15 @@ public final class SidebarViewController: NSViewController {
         scrollView.autohidesScrollers = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
+        backgroundView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(backgroundView)
         view.addSubview(scrollView)
         NSLayoutConstraint.activate([
+            backgroundView.topAnchor.constraint(equalTo: view.topAnchor),
+            backgroundView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            backgroundView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backgroundView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
             scrollView.topAnchor.constraint(equalTo: view.topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -111,6 +182,7 @@ private final class SidebarSection {
     enum Kind: Equatable {
         case devices
         case places
+        case shared
     }
 
     let kind: Kind
@@ -190,6 +262,10 @@ extension SidebarViewController: NSOutlineViewDelegate {
 
     public func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
         !(item is SidebarSection)
+    }
+
+    public func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+        item is SidebarSection ? nil : SidebarRowView()
     }
 
     public func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
@@ -277,5 +353,31 @@ private final class SidebarItemCell: NSTableCellView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+}
+
+/// Draws the classic Aqua source-list selection — a rounded, vertically-
+/// gradiented pill (blue while the window is key, gray otherwise) —
+/// instead of the modern flat selection `.sourceList` renders under this
+/// app's forced Aqua appearance.
+private final class SidebarRowView: NSTableRowView {
+    override func drawSelection(in dirtyRect: NSRect) {
+        guard isSelected else { return }
+        let isKey = window?.isKeyWindow ?? false
+        let pillRect = bounds.insetBy(dx: 4, dy: 1)
+        let path = NSBezierPath(roundedRect: pillRect, xRadius: 5, yRadius: 5)
+        let gradient: NSGradient?
+        if isKey {
+            gradient = NSGradient(
+                starting: NSColor(calibratedRed: 0.42, green: 0.62, blue: 0.90, alpha: 1.0),
+                ending: NSColor(calibratedRed: 0.20, green: 0.42, blue: 0.80, alpha: 1.0)
+            )
+        } else {
+            gradient = NSGradient(
+                starting: NSColor(calibratedWhite: 0.78, alpha: 1.0),
+                ending: NSColor(calibratedWhite: 0.63, alpha: 1.0)
+            )
+        }
+        gradient?.draw(in: path, angle: 90)
     }
 }

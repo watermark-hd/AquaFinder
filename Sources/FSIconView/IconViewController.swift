@@ -41,6 +41,11 @@ public final class IconViewController: NSViewController {
     private var rootURL: URL
     private var textSize: TextSize = AppearancePreferenceStore.textSize
 
+    /// When non-nil, the grid shows this flat list instead of `rootURL`'s
+    /// contents — mirrors ListViewController's `searchResults` so search
+    /// isn't scoped to List View only.
+    private var searchResults: [FileItem]?
+
     private static let itemIdentifier = NSUserInterfaceItemIdentifier("IconItem")
     private let dragModifierTracker = DragModifierTracker()
     private let springLoadTimer = SpringLoadTimer()
@@ -99,8 +104,18 @@ public final class IconViewController: NSViewController {
     }
 
     private func reload() {
-        items = DirectoryListingCache.contents(of: rootURL)
+        items = searchResults ?? DirectoryListingCache.contents(of: rootURL)
         collectionView.reloadData()
+    }
+
+    public func showSearchResults(_ items: [FileItem]) {
+        searchResults = items
+        reload()
+    }
+
+    public func clearSearchResults() {
+        searchResults = nil
+        reload()
     }
 
     private func setUpCollectionView() {
