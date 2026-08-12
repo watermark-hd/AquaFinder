@@ -8,6 +8,10 @@ import FSUIKit
 /// 10.6) rather than the older path-string API.
 public final class ColumnBrowserViewController: NSViewController {
     public var onSelectionChange: ((FileItem) -> Void)?
+    /// Fired after this view performs a rename — lets MainWindowController
+    /// refresh sibling views (List/Icon) and invalidate the shared
+    /// directory cache, matching the same hook on List/Icon view.
+    public var onFileSystemChange: (() -> Void)?
 
     private let browser = NSBrowser()
     private var currentRoot: FileItem
@@ -41,6 +45,9 @@ public final class ColumnBrowserViewController: NSViewController {
         browser.isTitled = false
         browser.hasHorizontalScroller = true
         browser.separatesColumns = true
+        // Default (.autoColumnResizing) fights the user for column width;
+        // classic Finder lets you drag each column's edge to resize it.
+        browser.columnResizingType = .userColumnResizing
         browser.translatesAutoresizingMaskIntoConstraints = false
         browser.target = self
         browser.action = #selector(selectionChanged)
@@ -103,16 +110,36 @@ extension ColumnBrowserViewController: SelectionProviding {
     }
 
     public func beginRename() {
-        // NSBrowser doesn't offer cell editing the way NSTableView/
-        // NSCollectionView do; column-view rename is deferred (noted in
-        // the project plan as a known Phase 2 scope trim).
+        guard let indexPath = browser.selectionIndexPath else { return }
+        browser.editItem(at: indexPath, with: nil, select: true)
     }
 
+    /// Selects (and scrolls to) `url`, expanding whichever columns are
+    /// needed to reach it — built by matching path components against each
+    /// column's live listing, since NSBrowser's item-based API has no
+    /// direct "URL to index path" lookup.
     public func selectItem(at url: URL) {
-        // Mapping an arbitrary URL back to a specific column/row isn't
-        // cheap with NSBrowser's object-based API (same limitation noted
-        // on currentDirectoryURL above); Quick Look's arrow-key selection
-        // sync is scoped to List/Icon view for now.
+        guard let indexPath = indexPath(forItemAt: url) else { return }
+        browser.selectionIndexPath = indexPath
+        browser.scrollColumnToVisible(indexPath.count - 1)
+        lastSelectedItem = FileItem(url: url)
+    }
+
+    private func indexPath(forItemAt url: URL) -> IndexPath? {
+        let rootComponents = currentRoot.url.standardizedFileURL.pathComponents
+        let targetComponents = url.standardizedFileURL.pathComponents
+        guard targetComponents.count > rootComponents.count,
+              Array(targetComponents.prefix(rootComponents.count)) == rootComponents
+        else { return nil }
+
+        var indexes: [Int] = []
+        var siblings = children(of: currentRoot.url)
+        for component in targetComponents[rootComponents.count...] {
+            guard let index = siblings.firstIndex(where: { $0.url.lastPathComponent == component }) else { return nil }
+            indexes.append(index)
+            siblings = children(of: siblings[index].url)
+        }
+        return IndexPath(indexes: indexes)
     }
 }
 
@@ -147,5 +174,22 @@ extension ColumnBrowserViewController: NSBrowserDelegate {
               let fileItem = browser.item(atRow: row, inColumn: column) as? FileItem else { return }
         browserCell.image = IconCache.icon(for: fileItem.url)
         browserCell.isLeaf = !fileItem.isBrowsable
+        browserCell.isEditable = true
+    }
+
+    public func browser(_ browser: NSBrowser, shouldEditItem item: Any?) -> Bool {
+        true
+    }
+
+    public func browser(_ browser: NSBrowser, setObjectValue object: Any?, forItem item: Any?) {
+        guard let fileItem = item as? FileItem,
+              let newName = object as? String,
+              newName != fileItem.name,
+              let destination = try? FileOperations.rename(fileItem.url, to: newName)
+        else { return }
+        DirectoryListingCache.invalidate(fileItem.url.deletingLastPathComponent())
+        lastSelectedItem = FileItem(url: destination)
+        browser.reloadColumn(browser.selectedColumn)
+        onFileSystemChange?()
     }
 }

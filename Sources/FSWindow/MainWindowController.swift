@@ -195,6 +195,7 @@ public final class MainWindowController: NSWindowController {
         // visible, have no way to know their cached listing is stale
         // otherwise. Refresh everything uniformly instead of trying to
         // track exactly which pane(s) actually changed.
+        columnVC.onFileSystemChange = { [weak self] in self?.refreshAllViews() }
         listVC.onFileSystemChange = { [weak self] in self?.refreshAllViews() }
         iconVC.onFileSystemChange = { [weak self] in self?.refreshAllViews() }
         sidebarVC.onFileSystemChange = { [weak self] in self?.refreshAllViews() }

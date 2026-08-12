@@ -14,15 +14,11 @@ public protocol SelectionProviding: AnyObject {
 
     func refresh()
 
-    /// Starts inline rename of the current selection. A no-op where that
-    /// isn't supported yet (Column view — NSBrowser doesn't offer cell
-    /// editing the way NSTableView/NSCollectionView do).
+    /// Starts inline rename of the current selection.
     func beginRename()
 
-    /// Selects (and scrolls to) the item at this URL, if it's currently
-    /// visible in this view — used to keep the browser's selection
-    /// highlight in sync while stepping through Quick Look with arrow
-    /// keys. A no-op in Column view: mapping an arbitrary URL back to a
-    /// column/row isn't cheap there (same limitation as beginRename).
+    /// Selects (and scrolls to) the item at this URL, if it's reachable
+    /// from this view — used to keep the browser's selection highlight in
+    /// sync while stepping through Quick Look with arrow keys.
     func selectItem(at url: URL)
 }
