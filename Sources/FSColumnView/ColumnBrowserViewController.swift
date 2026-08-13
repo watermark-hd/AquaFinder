@@ -68,6 +68,9 @@ public final class ColumnBrowserViewController: NSViewController {
 
         browser.delegate = self
         browser.isTitled = false
+        // Defaults to false — without this, Shift/Cmd-click only ever
+        // ends up with the single last-clicked row selected.
+        browser.allowsMultipleSelection = true
         browser.hasHorizontalScroller = true
         browser.separatesColumns = true
         // Default (.autoColumnResizing) fights the user for column width;
@@ -195,8 +198,13 @@ final class ContextMenuBrowser: NSBrowser {
 }
 
 extension ColumnBrowserViewController: SelectionProviding {
+    /// All selected rows in whichever column currently has the selection
+    /// — not just `lastSelectedItem`, which only ever tracks one (the
+    /// "primary" one selectionChanged() last saw), so this stayed
+    /// single-item even once allowsMultipleSelection made the browser
+    /// itself highlight a multi-row selection.
     public var selectedURLs: [URL] {
-        lastSelectedItem.map { [$0.url] } ?? []
+        browser.selectionIndexPaths.compactMap { browser.item(at: $0) as? FileItem }.map(\.url)
     }
 
     /// The deepest selected folder (or the parent of a selected leaf file);

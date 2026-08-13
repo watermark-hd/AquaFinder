@@ -140,6 +140,10 @@ public final class IconViewController: NSViewController {
         collectionView.delegate = self
         collectionView.register(IconCollectionViewItem.self, forItemWithIdentifier: Self.itemIdentifier)
         collectionView.isSelectable = true
+        // Defaults to false — without this, Shift/Cmd-click and drag-to-
+        // select-rectangle only ever end up with the single last-clicked
+        // item selected, no matter how the user selects.
+        collectionView.allowsMultipleSelection = true
         collectionView.backgroundColors = [.clear]
         collectionView.addGestureRecognizer(doubleClickGesture)
         // NSScrollView's own default background drawing uses a dynamic

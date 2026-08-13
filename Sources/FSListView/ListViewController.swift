@@ -146,6 +146,10 @@ public final class ListViewController: NSViewController {
         // a header toggles/re-targets from here via sortDescriptorsDidChange.
         outlineView.sortDescriptors = [nameColumn.sortDescriptorPrototype!]
         outlineView.usesAlternatingRowBackgroundColors = true
+        // Defaults to false — without this, Shift/Cmd-click and drag-to-
+        // select-rectangle only ever end up with the single last-clicked
+        // row selected, no matter how the user selects.
+        outlineView.allowsMultipleSelection = true
         outlineView.rowHeight = textSize.listRowHeight
         outlineView.target = self
         outlineView.doubleAction = #selector(handleDoubleClick)
