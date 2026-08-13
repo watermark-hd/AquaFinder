@@ -40,6 +40,7 @@ public final class IconViewController: NSViewController {
     private var items: [FileItem] = []
     private var rootURL: URL
     private var textSize: TextSize = AppearancePreferenceStore.textSize
+    private var sortField: FileSortField = .name
 
     /// When non-nil, the grid shows this flat list instead of `rootURL`'s
     /// contents — mirrors ListViewController's `searchResults` so search
@@ -104,8 +105,16 @@ public final class IconViewController: NSViewController {
     }
 
     private func reload() {
-        items = searchResults ?? DirectoryListingCache.contents(of: rootURL)
+        let unsorted = searchResults ?? DirectoryListingCache.contents(of: rootURL)
+        items = FileSorting.sorted(unsorted, by: sortField)
         collectionView.reloadData()
+    }
+
+    /// Set from the View menu's "Arrange By" — Icon view has no column
+    /// headers to click the way List view does.
+    public func applySortField(_ field: FileSortField) {
+        sortField = field
+        reload()
     }
 
     public func showSearchResults(_ items: [FileItem]) {

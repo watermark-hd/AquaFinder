@@ -1,4 +1,5 @@
 import AppKit
+import FSCore
 import FSWindow
 
 final class AppDelegate: NSObject, NSApplicationDelegate, AppWindowOpening {
@@ -87,6 +88,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, AppWindowOpening {
         mainMenu.addItem(editMenuItem)
         editMenuItem.submenu = makeEditMenu()
 
+        let viewMenuItem = NSMenuItem()
+        mainMenu.addItem(viewMenuItem)
+        viewMenuItem.submenu = makeViewMenu()
+
         let goMenuItem = NSMenuItem()
         mainMenu.addItem(goMenuItem)
         goMenuItem.submenu = makeGoMenu()
@@ -150,6 +155,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, AppWindowOpening {
             NSLocalizedString("Close Window", comment: "Fileメニュー: ウィンドウを閉じる"),
             action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"
         )
+        return menu
+    }
+
+    /// "Arrange By" only affects Icon/Column view — List view sorts via
+    /// its own clickable column headers, independently of this menu.
+    private func makeViewMenu() -> NSMenu {
+        let menu = NSMenu(title: NSLocalizedString("View", comment: "メニューバー: View"))
+        let arrangeMenu = NSMenu()
+        for field in FileSortField.allCases {
+            let item = NSMenuItem(
+                title: field.displayName,
+                action: #selector(MainWindowController.setSortField(_:)), keyEquivalent: ""
+            )
+            item.representedObject = field
+            arrangeMenu.addItem(item)
+        }
+        let arrangeItem = NSMenuItem(
+            title: NSLocalizedString("Arrange By", comment: "Viewメニュー: 整頓の基準サブメニュー"),
+            action: nil, keyEquivalent: ""
+        )
+        arrangeItem.submenu = arrangeMenu
+        menu.addItem(arrangeItem)
         return menu
     }
 

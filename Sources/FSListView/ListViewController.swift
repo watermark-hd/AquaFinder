@@ -34,8 +34,8 @@ public final class ListViewController: NSViewController {
     fileprivate static let labelDotTag = 998
 
     /// When non-nil, the outline shows this flat list instead of
-    /// `rootURL`'s contents — how search results get displayed (Phase 4
-    /// scopes search results to List View only; see MainWindowController).
+    /// `rootURL`'s contents — how search results get displayed (Icon and
+    /// Column view have their own equivalent; see MainWindowController).
     private var searchResults: [FileItem]?
 
     private let dragModifierTracker = DragModifierTracker()

@@ -30,13 +30,24 @@ public final class ColumnBrowserViewController: NSViewController {
     /// while searching in Column view — rather than the search matches
     /// being independently browsable subtrees of themselves.
     private var searchResults: [FileItem]?
+    private var sortField: FileSortField = .name
 
     // NSBrowser queries numberOfChildrenOfItem/child(_:ofItem:) repeatedly
     // per column; DirectoryListingCache (shared with List/Icon view and the
     // status bar) avoids re-hitting the disk and re-sorting the same
     // folder's contents multiple times per navigation.
     private func children(of url: URL) -> [FileItem] {
-        DirectoryListingCache.contents(of: url)
+        FileSorting.sorted(DirectoryListingCache.contents(of: url), by: sortField)
+    }
+
+    /// Set from the View menu's "Arrange By" — Column view has no column
+    /// headers to click the way List view does.
+    public func applySortField(_ field: FileSortField) {
+        sortField = field
+        guard browser.lastColumn >= 0 else { return }
+        for column in 0...browser.lastColumn {
+            browser.reloadColumn(column)
+        }
     }
 
     public init(rootURL: URL) {
@@ -250,7 +261,9 @@ extension ColumnBrowserViewController: NSBrowserDelegate {
         guard let fileItem = item as? FileItem else {
             preconditionFailure("unexpected browser item")
         }
-        if let searchResults, fileItem.url == currentRoot.url { return searchResults[index] }
+        if let searchResults, fileItem.url == currentRoot.url {
+            return FileSorting.sorted(searchResults, by: sortField)[index]
+        }
         return children(of: fileItem.url)[index]
     }
 

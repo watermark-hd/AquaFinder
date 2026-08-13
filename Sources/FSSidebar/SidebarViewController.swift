@@ -5,9 +5,9 @@ import FSUIKit
 /// Snow Leopard-era sidebar: three groups — DEVICES (local volumes),
 /// PLACES (Home/Desktop/Documents/Applications), and SHARED (mounted
 /// network shares, populated by Connect to Server) — predates the Big Sur
-/// "Favorites" reshuffle. Uses stock `.sourceList` selection styling for
-/// now; the fully custom Snow-Leopard gradient/appearance pass is deferred
-/// to the Phase 5 polish pass.
+/// "Favorites" reshuffle. Row selection is custom-drawn (SidebarRowView
+/// below) to match the classic Aqua gradient pill instead of the modern
+/// flat `.sourceList` look; the background gradient is SidebarBackgroundView.
 public final class SidebarViewController: NSViewController {
     public var onSelect: ((FileItem) -> Void)?
     /// Fired after a file gets dropped onto a sidebar row — the sidebar

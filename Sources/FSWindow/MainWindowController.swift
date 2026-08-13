@@ -29,6 +29,9 @@ public final class MainWindowController: NSWindowController {
     private var historyStack: [URL] = []
     private var historyIndex = -1
     private var currentViewMode: ViewMode = ViewModePreferenceStore.loadViewMode()
+    // Icon/Column view's "Arrange By" — List view sorts independently via
+    // its own clickable column headers.
+    private var sortField: FileSortField = ViewModePreferenceStore.loadSortField()
     private var currentRootURL: URL
     // Watches whichever folder is currently the window's root so changes
     // made outside the app (Terminal, another app, a second AquaFinder
@@ -171,6 +174,8 @@ public final class MainWindowController: NSWindowController {
         showActiveViewController()
         updateStatusBar()
         applyAppearancePreferences()
+        iconVC.applySortField(sortField)
+        columnVC.applySortField(sortField)
         directoryWatcher.onChange = { [weak self] in self?.refreshAllViews() }
         directoryWatcher.startWatching(rootURL)
         appearanceObserver = NotificationCenter.default.addObserver(
@@ -822,6 +827,19 @@ public final class MainWindowController: NSWindowController {
         }
     }
 
+    // MARK: - View menu actions
+
+    /// Icon/Column view's "Arrange By" — List view sorts independently
+    /// via its own clickable column headers, so this only ever touches
+    /// the other two.
+    @objc public func setSortField(_ sender: Any?) {
+        guard let field = (sender as? NSMenuItem)?.representedObject as? FileSortField else { return }
+        sortField = field
+        ViewModePreferenceStore.saveSortField(field)
+        iconVC.applySortField(field)
+        columnVC.applySortField(field)
+    }
+
     // MARK: - File copy / paste (⌘C / ⌘V)
     //
     // Edit メニューの Copy/Paste 項目は NSText.copy(_:)/paste(_:) と同名
@@ -895,6 +913,9 @@ extension MainWindowController: NSMenuItemValidation {
             return !activeBrowser.selectedURLs.isEmpty
         case #selector(paste(_:)):
             return !FilePasteboard.readURLs().isEmpty
+        case #selector(setSortField(_:)):
+            menuItem.state = (menuItem.representedObject as? FileSortField) == sortField ? .on : .off
+            return true
         default:
             return true
         }

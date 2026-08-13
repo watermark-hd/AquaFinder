@@ -20,6 +20,10 @@
 
 /* Goメニュー */
 "Enclosing Folder" = "上のフォルダ";
+"Connect to Server…" = "サーバへ接続…";
+
+/* Viewメニュー */
+"Arrange By" = "整頓の基準";
 
 /* Editメニュー */
 "Undo" = "取り消す";
@@ -52,6 +56,15 @@
 /* サイドバー */
 "DEVICES" = "デバイス";
 "PLACES" = "場所";
+"SHARED" = "共有";
+
+/* サーバへ接続ダイアログ */
+"Connect to Server" = "サーバへ接続";
+"Enter the server address." = "サーバのアドレスを入力してください。";
+"Connect" = "接続";
+"Cancel" = "キャンセル";
+"That doesn’t look like a server address (e.g. smb://server/share)." = "サーバのアドレスとして認識できません（例: smb://server/share）。";
+"Couldn’t connect to the server (error %d)." = "サーバへ接続できませんでした（エラー%d）。";
 
 /* 検索フィールド */
 "Search This Folder" = "このフォルダを検索";
@@ -94,6 +107,17 @@
 "Modified:" = "変更日:";
 "Folder" = "フォルダ";
 "Document" = "書類";
+"More Info" = "その他の情報";
+"Last opened:" = "最終起動日:";
+"Name & Extension" = "名前と拡張子";
+"Hide extension" = "拡張子を隠す";
+"Open with" = "このアプリケーションで開く";
+"Change All…" = "すべて変更…";
+"Sharing & Permissions" = "共有とアクセス権";
+"everyone" = "その他";
+"Read & Write" = "読み/書き";
+"Read Only" = "読み出しのみ";
+"No Access" = "アクセス不可";
 
 /* 環境設定パネル */
 "Preferences" = "環境設定";
