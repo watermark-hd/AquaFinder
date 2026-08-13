@@ -13,6 +13,7 @@
 "Get Info" = "情報を見る";
 "Quick Look" = "クイックルック";
 "Duplicate" = "複製";
+"Compress “%@”" = "「%@」を圧縮";
 "Rename" = "名称変更";
 "Move to Trash" = "ゴミ箱に入れる";
 "Empty Trash" = "ゴミ箱を空にする";
@@ -89,6 +90,7 @@
 "That name isn’t valid." = "その名前は使用できません。";
 "An item with that name already exists." = "その名前の項目はすでに存在します。";
 "The operation couldn’t be completed." = "操作を完了できませんでした。";
+"Couldn’t create the archive." = "アーカイブを作成できませんでした。";
 
 /* ラベルカラー */
 "None" = "なし";

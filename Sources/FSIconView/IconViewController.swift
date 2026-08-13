@@ -206,6 +206,11 @@ public final class IconViewController: NSViewController {
                 self?.reload()
                 self?.onFileSystemChange?()
             },
+            onCompress: { [weak self] in
+                _ = try? FileOperations.compress(fileItem.url)
+                self?.reload()
+                self?.onFileSystemChange?()
+            },
             onMoveToTrash: { [weak self] in
                 _ = try? FileOperations.moveToTrash(fileItem.url)
                 self?.reload()

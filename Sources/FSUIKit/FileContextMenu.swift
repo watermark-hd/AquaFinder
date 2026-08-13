@@ -10,6 +10,7 @@ public enum FileContextMenu {
         onGetInfo: @escaping () -> Void,
         onRename: (() -> Void)?,
         onDuplicate: @escaping () -> Void,
+        onCompress: @escaping () -> Void,
         onMoveToTrash: @escaping () -> Void,
         onSetLabelColor: @escaping (LabelColor) -> Void,
         onOpenInNewWindow: (() -> Void)? = nil
@@ -27,6 +28,8 @@ public enum FileContextMenu {
             items.append(ClosureMenuItem(title: NSLocalizedString("Rename", comment: "右クリックメニュー: 名称変更"), handler: onRename))
         }
         items.append(ClosureMenuItem(title: NSLocalizedString("Duplicate", comment: "右クリックメニュー: 複製"), handler: onDuplicate))
+        let compressFormat = NSLocalizedString("Compress “%@”", comment: "右クリックメニュー: 圧縮（%@=ファイル名）")
+        items.append(ClosureMenuItem(title: String(format: compressFormat, fileItem.name), handler: onCompress))
         items.append(.separator())
 
         let currentColor = fileItem.labelColor

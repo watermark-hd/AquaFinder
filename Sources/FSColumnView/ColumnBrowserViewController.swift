@@ -144,6 +144,10 @@ public final class ColumnBrowserViewController: NSViewController {
                 _ = try? FileOperations.duplicate(fileItem.url)
                 self?.reloadAfterChange(toParentOf: fileItem, inColumn: column)
             },
+            onCompress: { [weak self] in
+                _ = try? FileOperations.compress(fileItem.url)
+                self?.reloadAfterChange(toParentOf: fileItem, inColumn: column)
+            },
             onMoveToTrash: { [weak self] in
                 _ = try? FileOperations.moveToTrash(fileItem.url)
                 self?.reloadAfterChange(toParentOf: fileItem, inColumn: column)

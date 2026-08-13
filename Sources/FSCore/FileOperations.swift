@@ -3,6 +3,7 @@ import Foundation
 public enum FileOperationError: Error, LocalizedError {
     case invalidName
     case destinationExists
+    case compressFailed
 
     public var errorDescription: String? {
         switch self {
@@ -10,6 +11,8 @@ public enum FileOperationError: Error, LocalizedError {
             return NSLocalizedString("That name isn’t valid.", comment: "リネーム/新規作成時に無効な名前が指定されたときのエラー")
         case .destinationExists:
             return NSLocalizedString("An item with that name already exists.", comment: "同名の項目が既に存在するときのエラー")
+        case .compressFailed:
+            return NSLocalizedString("Couldn’t create the archive.", comment: "圧縮に失敗したときのエラー")
         }
     }
 }
@@ -49,6 +52,32 @@ public enum FileOperations {
         let directory = url.deletingLastPathComponent()
         let destination = duplicateURL(for: url, in: directory)
         try FileManager.default.copyItem(at: url, to: destination)
+        return destination
+    }
+
+    /// Zips a single item into `<name>.zip` alongside it — matches real
+    /// Finder's "Compress" right-click item (currently the only case the
+    /// context menu ever builds: it's already single-item-only for
+    /// Duplicate/Move to Trash too, even under a multi-selection).
+    /// `ditto` is what Finder's own Compress uses internally; shelling out
+    /// to it avoids reimplementing zip's format and its resource-fork/
+    /// extended-attribute preservation rules.
+    @discardableResult
+    public static func compress(_ url: URL) throws -> URL {
+        let directory = url.deletingLastPathComponent()
+        let destination = uniqueURL(for: directory.appendingPathComponent("\(url.lastPathComponent).zip"), in: directory)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        // --keepParent embeds url's own name as the archive's top-level
+        // entry, so extracting the zip gives back the original item
+        // (a file or a folder), not just its loose contents.
+        process.arguments = ["-c", "-k", "--keepParent", url.path, destination.path]
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw FileOperationError.compressFailed
+        }
         return destination
     }
 

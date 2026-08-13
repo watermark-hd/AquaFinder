@@ -283,6 +283,11 @@ extension ListViewController: NSMenuDelegate {
                 self?.refresh()
                 self?.onFileSystemChange?()
             },
+            onCompress: { [weak self] in
+                _ = try? FileOperations.compress(fileItem.url)
+                self?.refresh()
+                self?.onFileSystemChange?()
+            },
             onMoveToTrash: { [weak self] in
                 _ = try? FileOperations.moveToTrash(fileItem.url)
                 self?.refresh()
