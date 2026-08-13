@@ -760,10 +760,28 @@ public final class MainWindowController: NSWindowController {
     }
 
     @objc public func emptyTrash(_ sender: Any?) {
-        do {
-            try FileOperations.emptyTrash()
-        } catch {
-            showFileOperationError(error)
+        guard let window else { return }
+        let alert = NSAlert()
+        alert.messageText = NSLocalizedString(
+            "Are you sure you want to permanently erase the items in the Trash?",
+            comment: "ゴミ箱を空にする確認ダイアログのタイトル"
+        )
+        alert.informativeText = NSLocalizedString(
+            "You can’t undo this action.",
+            comment: "ゴミ箱を空にする確認ダイアログの説明"
+        )
+        // Matches real Finder: "Empty Trash" is the default button (plain
+        // Return activates it), "Cancel" is reachable via Escape.
+        alert.addButton(withTitle: NSLocalizedString("Empty Trash", comment: "ゴミ箱を空にする確認ダイアログ: 実行ボタン"))
+        alert.addButton(withTitle: NSLocalizedString("Cancel", comment: "ゴミ箱を空にする確認ダイアログ: キャンセルボタン"))
+
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            do {
+                try FileOperations.emptyTrash()
+            } catch {
+                self?.showFileOperationError(error)
+            }
         }
     }
 

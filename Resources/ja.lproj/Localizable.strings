@@ -81,6 +81,10 @@
 "%@ copy" = "%@のコピー";
 "%@ copy %d" = "%@のコピー %d";
 
+/* ゴミ箱を空にする確認ダイアログ */
+"Are you sure you want to permanently erase the items in the Trash?" = "ゴミ箱の項目を完全に削除しますか？";
+"You can’t undo this action." = "この操作は取り消せません。";
+
 /* エラーメッセージ */
 "That name isn’t valid." = "その名前は使用できません。";
 "An item with that name already exists." = "その名前の項目はすでに存在します。";
