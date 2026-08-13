@@ -790,8 +790,12 @@ public final class MainWindowController: NSWindowController {
     }
 
     @objc public func showInfoForSelection(_ sender: Any?) {
-        guard let url = activeBrowser.selectedURLs.first else { return }
-        showGetInfo(for: FileItem(url: url))
+        let urls = activeBrowser.selectedURLs
+        if urls.count > 1 {
+            GetInfoWindowRegistry.shared.showMultiple(for: urls.map { FileItem(url: $0) })
+        } else if let url = urls.first {
+            showGetInfo(for: FileItem(url: url))
+        }
     }
 
     // MARK: - Go menu actions

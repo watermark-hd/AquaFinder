@@ -104,6 +104,10 @@
 
 /* Get Info パネル */
 "%@ Info" = "%@の情報";
+"%d Items Info" = "%d項目の情報";
+"%d folders, %d files" = "フォルダ%d個、ファイル%d個";
+"%d folders" = "フォルダ%d個";
+"%d files" = "ファイル%d個";
 "Calculating…" = "計算中…";
 "General" = "一般";
 "Kind:" = "種類:";

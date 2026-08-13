@@ -10,6 +10,7 @@ public final class GetInfoWindowRegistry {
     public static let shared = GetInfoWindowRegistry()
 
     private var windows: [URL: GetInfoWindowController] = [:]
+    private var multiItemWindows: [Set<URL>: MultiItemInfoWindowController] = [:]
 
     private init() {}
 
@@ -25,6 +26,26 @@ public final class GetInfoWindowRegistry {
             forName: NSWindow.willCloseNotification, object: controller.window, queue: .main
         ) { [weak self] _ in
             self?.windows.removeValue(forKey: fileItem.url)
+        }
+        controller.showWindow(nil)
+    }
+
+    /// Real Finder shows one combined panel for a multi-item selection
+    /// rather than one per item — see MultiItemInfoWindowController's doc
+    /// comment for how its content differs from the single-item panel.
+    public func showMultiple(for fileItems: [FileItem]) {
+        let key = Set(fileItems.map(\.url))
+        if let existing = multiItemWindows[key] {
+            existing.showWindow(nil)
+            existing.window?.makeKeyAndOrderFront(nil)
+            return
+        }
+        let controller = MultiItemInfoWindowController(fileItems: fileItems)
+        multiItemWindows[key] = controller
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: controller.window, queue: .main
+        ) { [weak self] _ in
+            self?.multiItemWindows.removeValue(forKey: key)
         }
         controller.showWindow(nil)
     }
