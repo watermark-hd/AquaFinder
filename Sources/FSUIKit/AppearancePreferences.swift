@@ -50,9 +50,9 @@ public enum TextSize: Int, CaseIterable {
     /// 小さくして行同士がくっついて見えないようにしている。
     public var columnRowIconSize: CGFloat {
         switch self {
-        case .small: return 12
-        case .medium: return 15
-        case .large: return 19
+        case .small: return 14
+        case .medium: return 17
+        case .large: return 21
         }
     }
 

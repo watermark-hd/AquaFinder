@@ -75,7 +75,7 @@ public final class MainWindowController: NSWindowController {
     private var searchQuery: NSMetadataQuery?
 
     private lazy var navigationControl: NSSegmentedControl = {
-        let control = NSSegmentedControl(
+        let control = ClassicBezelSegmentedControl(
             labels: ["\u{25C0}", "\u{25B6}"],
             trackingMode: .momentary,
             target: self,
@@ -86,7 +86,9 @@ public final class MainWindowController: NSWindowController {
         // light-gray background. .rounded gives each segment a visible
         // pill-shaped border and a subtle native shadow — a native
         // AppKit draw style, not a custom layer, so this costs nothing
-        // beyond the style switch itself.
+        // beyond the style switch itself. ClassicBezelSegmentedControl
+        // (below) layers a darker outline on top to get closer still to
+        // Snow Leopard's more clearly-defined Aqua bezel.
         control.segmentStyle = .rounded
         control.setEnabled(false, forSegment: 0)
         control.setEnabled(false, forSegment: 1)
@@ -94,7 +96,7 @@ public final class MainWindowController: NSWindowController {
     }()
 
     private lazy var viewModeControl: NSSegmentedControl = {
-        let control = NSSegmentedControl(
+        let control = ClassicBezelSegmentedControl(
             labels: [
                 NSLocalizedString("Icon", comment: "表示切り替え: アイコン表示"),
                 NSLocalizedString("List", comment: "表示切り替え: リスト表示"),
@@ -978,6 +980,38 @@ extension MainWindowController: NSWindowDelegate {
     private func saveWindowFrame() {
         guard let window else { return }
         UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: Self.windowFrameDefaultsKey)
+    }
+}
+
+/// .rounded's native bezel on modern macOS is a thin, faint pill —
+/// nothing like Snow Leopard's darker, more clearly-defined Aqua
+/// segmented-control border. AppKit doesn't expose a way to get that old
+/// bezel back (the pill shape itself is baked into .rounded's own system
+/// drawing), so this overlays a fixed dark-gray CALayer border on top of
+/// it instead — a static layer property, not a custom draw path, so it
+/// costs nothing per frame. The radius has to track the control's actual
+/// height on every layout pass (toolbar items can resize): a fixed large
+/// radius looked like the right "always a pill" shortcut, but a
+/// CALayer's corner arcs don't clamp at half the shorter side the way
+/// that trick relies on — set too large relative to the real bounds, the
+/// overlapping arcs draw a pointed lens/football shape instead of a
+/// clean stadium. Uses a fixed, non-dynamic gray (see rootView's own
+/// layer-color comment elsewhere in this file for why) rather than a
+/// system color, since CALayer.borderColor has the same
+/// appearance-tracking problem as backgroundColor does.
+private final class ClassicBezelSegmentedControl: NSSegmentedControl {
+    private static let bezelColor = NSColor(calibratedWhite: 0.45, alpha: 1.0).cgColor
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        wantsLayer = true
+        layer?.borderWidth = 1
+        layer?.borderColor = Self.bezelColor
+    }
+
+    override func layout() {
+        super.layout()
+        layer?.cornerRadius = bounds.height / 2
     }
 }
 
