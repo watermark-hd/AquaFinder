@@ -44,6 +44,21 @@ public final class ColumnBrowserViewController: NSViewController {
     /// headers to click the way List view does.
     public func applySortField(_ field: FileSortField) {
         sortField = field
+        reloadAllColumns()
+    }
+
+    /// Matches List/Sidebar/Icon view's own `applyTextSize` — Column view
+    /// used to be the one place in the app that never read this
+    /// preference at all, leaving its icons stuck at whatever native size
+    /// `NSWorkspace.icon(forFile:)` happens to hand back. On a browser's
+    /// tight row height that native size overflows the row and bleeds
+    /// into the row above/below it.
+    public func applyTextSize(_ textSize: TextSize) {
+        FileBrowserCell.iconSize = textSize.columnRowIconSize
+        reloadAllColumns()
+    }
+
+    private func reloadAllColumns() {
         guard browser.lastColumn >= 0 else { return }
         for column in 0...browser.lastColumn {
             browser.reloadColumn(column)
@@ -228,6 +243,15 @@ final class ContextMenuBrowser: NSBrowser {
 /// customization point — is what actually works for an item-based
 /// browser; see the doc comment on `objectValueForItem` above for why.
 final class FileBrowserCell: NSBrowserCell {
+    /// NSBrowser instantiates cells internally via `setCellClass(_:)`, so
+    /// there's no per-instance init hook to hand this down from
+    /// ColumnBrowserViewController the way List/Sidebar pass it through
+    /// their own cell configuration — a shared static is the only place
+    /// all cells can read it from. Fine in practice since text size is a
+    /// single app-wide preference already (AppearancePreferenceStore),
+    /// not something that varies per window.
+    static var iconSize: CGFloat = AppearancePreferenceStore.textSize.columnRowIconSize
+
     override var objectValue: Any? {
         get { super.objectValue }
         set {
@@ -235,7 +259,15 @@ final class FileBrowserCell: NSBrowserCell {
                 super.objectValue = newValue
                 return
             }
-            image = IconCache.icon(for: fileItem.url)
+            // IconCache hands back a shared instance reused by every other
+            // view; resizing it in place would shrink it everywhere else
+            // too. NSBrowserCell also draws `image` at its own reported
+            // size rather than scaling to fit the cell (unlike NSImageView
+            // elsewhere in the app), so a resized copy is what actually
+            // keeps the icon from overflowing the row.
+            let icon = IconCache.icon(for: fileItem.url).copy() as? NSImage
+            icon?.size = NSSize(width: Self.iconSize, height: Self.iconSize)
+            image = icon
             // NSCell's `image` setter switches the cell's `type` to
             // `.imageCellType` as a side effect (documented Apple
             // behavior). Left alone, that broke the rename field editor —

@@ -44,6 +44,18 @@ public enum TextSize: Int, CaseIterable {
         }
     }
 
+    /// カラム表示の行アイコンの一辺のサイズ。NSBrowser の行の高さはセルの
+    /// 内容（アイコン＋文字）に合わせて自動計算され、リスト表示のように
+    /// 行の高さ側に余白を確保できないため、rowIconSize よりも一回り
+    /// 小さくして行同士がくっついて見えないようにしている。
+    public var columnRowIconSize: CGFloat {
+        switch self {
+        case .small: return 12
+        case .medium: return 15
+        case .large: return 19
+        }
+    }
+
     /// アイコン表示のアイコン画像の一辺のサイズ。
     public var gridIconSize: CGFloat {
         switch self {

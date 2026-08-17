@@ -81,7 +81,13 @@ public final class MainWindowController: NSWindowController {
             target: self,
             action: #selector(navigationControlClicked(_:))
         )
-        control.segmentStyle = .separated
+        // .separated (the previous style) draws almost no bezel at rest,
+        // so the button all but disappeared against the toolbar's own
+        // light-gray background. .rounded gives each segment a visible
+        // pill-shaped border and a subtle native shadow — a native
+        // AppKit draw style, not a custom layer, so this costs nothing
+        // beyond the style switch itself.
+        control.segmentStyle = .rounded
         control.setEnabled(false, forSegment: 0)
         control.setEnabled(false, forSegment: 1)
         return control
@@ -98,6 +104,9 @@ public final class MainWindowController: NSWindowController {
             target: self,
             action: #selector(viewModeChanged(_:))
         )
+        // See navigationControl above — left at the .automatic default
+        // this blended into the toolbar the same way.
+        control.segmentStyle = .rounded
         control.setSelected(true, forSegment: currentViewMode.rawValue)
         return control
     }()
@@ -469,6 +478,7 @@ public final class MainWindowController: NSWindowController {
         sidebarVC.applyTextSize(textSize)
         listVC.applyTextSize(textSize)
         iconVC.applyTextSize(textSize)
+        columnVC.applyTextSize(textSize)
     }
 
     /// 環境設定パネルの「ウィンドウサイズを既定に戻す」から呼ばれる。
