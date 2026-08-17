@@ -236,12 +236,40 @@ final class FileBrowserCell: NSBrowserCell {
                 return
             }
             image = IconCache.icon(for: fileItem.url)
+            // NSCell's `image` setter switches the cell's `type` to
+            // `.imageCellType` as a side effect (documented Apple
+            // behavior). Left alone, that broke the rename field editor —
+            // it seeds its initial text from a text-type cell, so once
+            // this cell silently became an image cell, editing opened
+            // with an empty box instead of the current name. Forcing it
+            // back to `.textCellType` restores that while the icon still
+            // draws fine, since NSBrowserCell always draws image + title
+            // together regardless of `type`.
+            type = .textCellType
             // Needed for rename (editItem(at:with:select:)) to actually
             // start an edit session — NSCell defaults to false, and
             // nothing else in this class's setup ever touches it.
             isEditable = true
             super.objectValue = fileItem.name
         }
+    }
+
+    /// The one place every editing session on this cell is guaranteed to
+    /// pass through, no matter what starts it — a Return keypress is
+    /// handled inside NSBrowser's private per-column NSMatrix and never
+    /// reaches any of NSBrowser's own public methods or AppKit's usual
+    /// text-editing notifications (confirmed by instrumentation: none of
+    /// them fired). `stringValue` here is already the plain file name —
+    /// set by the `objectValue` setter above whenever this cell was last
+    /// configured for display — so this doesn't need any outside context
+    /// to reseed the editor and fix its color.
+    override func edit(
+        withFrame aRect: NSRect, in controlView: NSView, editor textObj: NSText, delegate anObject: Any?, event theEvent: NSEvent?
+    ) {
+        super.edit(withFrame: aRect, in: controlView, editor: textObj, delegate: anObject, event: theEvent)
+        textObj.string = stringValue
+        textObj.textColor = .controlTextColor
+        textObj.selectAll(nil)
     }
 }
 
