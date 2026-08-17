@@ -76,6 +76,12 @@ public final class ColumnBrowserViewController: NSViewController {
         // Default (.autoColumnResizing) fights the user for column width;
         // classic Finder lets you drag each column's edge to resize it.
         browser.columnResizingType = .userColumnResizing
+        // .userColumnResizing has no sane width of its own to fall back
+        // on — without these, new columns default to a cramped width
+        // that crowds too many columns into the window at once.
+        browser.minColumnWidth = 150
+        browser.setDefaultColumnWidth(190)
+        browser.setCellClass(FileBrowserCell.self)
         browser.translatesAutoresizingMaskIntoConstraints = false
         browser.target = self
         browser.action = #selector(selectionChanged)
@@ -95,13 +101,32 @@ public final class ColumnBrowserViewController: NSViewController {
         browser.loadColumnZero()
     }
 
-    /// Resets the browser to a new root, collapsing all columns — used
-    /// when the sidebar selection or back/forward navigation changes which
-    /// top-level location is being browsed.
+    /// Called on every navigation — including a double-click descent deep
+    /// into a folder from Icon/List view, which by itself never touches
+    /// Column view at all. Rooting at `url` directly would show only its
+    /// own contents with no ancestor columns, hiding exactly the "folder
+    /// above" context real Finder still shows after switching view modes
+    /// mid-navigation. Rooting at the home directory instead and
+    /// selecting down to `url` reconstructs that ancestor chain, as long
+    /// as `url` actually lives under home — Applications, a mounted
+    /// volume, or a network share have no meaningful ancestor chain to
+    /// reconstruct anyway, so those just root at `url` directly as before.
     public func setRoot(_ url: URL) {
-        currentRoot = FileItem(url: url)
+        currentRoot = Self.ancestorRoot(for: url)
         lastSelectedItem = nil
         browser.loadColumnZero()
+        if currentRoot.url != url {
+            selectItem(at: url)
+        }
+    }
+
+    private static func ancestorRoot(for url: URL) -> FileItem {
+        let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.pathComponents
+        let target = url.standardizedFileURL.pathComponents
+        guard target.count > home.count, Array(target.prefix(home.count)) == home else {
+            return FileItem(url: url)
+        }
+        return FileItem(url: FileManager.default.homeDirectoryForCurrentUser)
     }
 
     public func showSearchResults(_ items: [FileItem]) {
@@ -197,6 +222,29 @@ final class ContextMenuBrowser: NSBrowser {
     }
 }
 
+/// Registered via `browser.setCellClass(_:)` so every cell the browser
+/// creates is one of these. Intercepting `objectValue` here — rather than
+/// `willDisplayCell(atRow:column:)`, NSBrowser's usual per-cell
+/// customization point — is what actually works for an item-based
+/// browser; see the doc comment on `objectValueForItem` above for why.
+final class FileBrowserCell: NSBrowserCell {
+    override var objectValue: Any? {
+        get { super.objectValue }
+        set {
+            guard let fileItem = newValue as? FileItem else {
+                super.objectValue = newValue
+                return
+            }
+            image = IconCache.icon(for: fileItem.url)
+            // Needed for rename (editItem(at:with:select:)) to actually
+            // start an edit session — NSCell defaults to false, and
+            // nothing else in this class's setup ever touches it.
+            isEditable = true
+            super.objectValue = fileItem.name
+        }
+    }
+}
+
 extension ColumnBrowserViewController: SelectionProviding {
     /// All selected rows in whichever column currently has the selection
     /// — not just `lastSelectedItem`, which only ever tracks one (the
@@ -287,16 +335,14 @@ extension ColumnBrowserViewController: NSBrowserDelegate {
         return !fileItem.isBrowsable
     }
 
+    // Returning the FileItem itself (not just its name) is what lets
+    // FileBrowserCell's objectValue override below pull the icon out —
+    // willDisplayCell(atRow:column:), the usual place to set a browser
+    // cell's image, turns out to belong to NSBrowser's older matrix-based
+    // delegate API and is simply never called once a browser is
+    // configured with the item-based methods this class uses instead.
     public func browser(_ browser: NSBrowser, objectValueForItem item: Any?) -> Any? {
-        (item as? FileItem)?.name
-    }
-
-    public func browser(_ browser: NSBrowser, willDisplayCell cell: Any, atRow row: Int, column: Int) {
-        guard let browserCell = cell as? NSBrowserCell,
-              let fileItem = browser.item(atRow: row, inColumn: column) as? FileItem else { return }
-        browserCell.image = IconCache.icon(for: fileItem.url)
-        browserCell.isLeaf = !fileItem.isBrowsable
-        browserCell.isEditable = true
+        item as? FileItem
     }
 
     public func browser(_ browser: NSBrowser, shouldEditItem item: Any?) -> Bool {
