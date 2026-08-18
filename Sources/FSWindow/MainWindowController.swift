@@ -75,7 +75,7 @@ public final class MainWindowController: NSWindowController {
     private var searchQuery: NSMetadataQuery?
 
     private lazy var navigationControl: NSSegmentedControl = {
-        let control = ClassicBezelSegmentedControl(
+        let control = NSSegmentedControl(
             labels: ["\u{25C0}", "\u{25B6}"],
             trackingMode: .momentary,
             target: self,
@@ -86,9 +86,13 @@ public final class MainWindowController: NSWindowController {
         // light-gray background. .rounded gives each segment a visible
         // pill-shaped border and a subtle native shadow — a native
         // AppKit draw style, not a custom layer, so this costs nothing
-        // beyond the style switch itself. ClassicBezelSegmentedControl
-        // (below) layers a darker outline on top to get closer still to
-        // Snow Leopard's more clearly-defined Aqua bezel.
+        // beyond the style switch itself. It's wrapped in a BezelBox
+        // (below, see toolbar item construction) for a darker outline on
+        // top, closer still to Snow Leopard's more clearly-defined Aqua
+        // bezel — deliberately *not* done by setting wantsLayer directly
+        // on this control: that broke the control's own native cell
+        // drawing on at least one Mac (segments rendered as a flat dark
+        // gray fill instead of the system pill background).
         control.segmentStyle = .rounded
         control.setEnabled(false, forSegment: 0)
         control.setEnabled(false, forSegment: 1)
@@ -96,7 +100,7 @@ public final class MainWindowController: NSWindowController {
     }()
 
     private lazy var viewModeControl: NSSegmentedControl = {
-        let control = ClassicBezelSegmentedControl(
+        let control = NSSegmentedControl(
             labels: [
                 NSLocalizedString("Icon", comment: "表示切り替え: アイコン表示"),
                 NSLocalizedString("List", comment: "表示切り替え: リスト表示"),
@@ -987,43 +991,58 @@ extension MainWindowController: NSWindowDelegate {
 /// nothing like Snow Leopard's darker, more clearly-defined Aqua
 /// segmented-control border. AppKit doesn't expose a way to get that old
 /// bezel back (the pill shape itself is baked into .rounded's own system
-/// drawing), so this overlays a fixed dark-gray CALayer border on top of
-/// it instead — a static layer property, not a custom draw path, so it
-/// costs nothing per frame. The radius has to track the control's actual
-/// height on every layout pass (toolbar items can resize): a fixed large
-/// radius looked like the right "always a pill" shortcut, but a
-/// CALayer's corner arcs don't clamp at half the shorter side the way
-/// that trick relies on — set too large relative to the real bounds, the
-/// overlapping arcs draw a pointed lens/football shape instead of a
-/// clean stadium. Uses a fixed, non-dynamic gray (see rootView's own
-/// layer-color comment elsewhere in this file for why) rather than a
-/// system color, since CALayer.borderColor has the same
-/// appearance-tracking problem as backgroundColor does.
-private final class ClassicBezelSegmentedControl: NSSegmentedControl {
-    private static let bezelColor = NSColor(calibratedWhite: 0.45, alpha: 1.0).cgColor
+/// drawing).
+///
+/// The first two attempts at faking it both set `wantsLayer = true`
+/// directly on the NSSegmentedControl itself, to draw a darker CALayer
+/// border on top: a fixed corner radius drew a distorted lens shape
+/// (radius bigger than the control's actual half-height), and fixing
+/// that to track real bounds in `layout()` still left the radius stuck
+/// at 0 (square corners) on at least one Mac, because `layout()` could
+/// run before `wantsLayer` had even created a layer to set it on. Worse,
+/// layer-backing the control directly turned out to break its own
+/// native cell drawing on that same Mac — segments rendered as a flat
+/// dark gray fill instead of the system's pill background, unrelated to
+/// the border bug.
+///
+/// Drawing the border on a separate, plain (non-layer-backed) wrapper
+/// view instead sidesteps both problems at once: `draw(_:)` always runs
+/// with correct final bounds (no layer-creation-order race), and the
+/// segmented control inside it is left completely alone, so its native
+/// rendering is untouched. Uses a fixed, non-dynamic gray (see
+/// rootView's own layer-color comment elsewhere in this file for why
+/// dynamic system colors are avoided) via `NSColor.set()` rather than a
+/// CGColor, since plain NSBezierPath drawing doesn't have the
+/// CALayer.borderColor appearance-tracking problem to begin with.
+private final class BezelBox: NSView {
+    private static let bezelColor = NSColor(calibratedWhite: 0.45, alpha: 1.0)
+    /// Gap between the wrapped control and the drawn border — without it
+    /// the stroke sits exactly under the control's own opaque edge
+    /// pixels and gets painted over, invisible.
+    private static let padding: CGFloat = 2
 
-    // cornerRadius used to be set only from layout() below. On at least
-    // one Mac that first layout() pass ran before this view had a layer
-    // at all (wantsLayer is only flipped on here, once the view lands in
-    // a window) — layer?.cornerRadius silently no-op'd on a nil layer,
-    // and nothing ever forced a second layout() pass afterward to catch
-    // it up. Left at CALayer's default radius of 0, the border drew as a
-    // plain rectangle poking out past the control's own rounded native
-    // bezel — square corners where a pill was expected. Setting it here
-    // too, right after the layer actually exists and bounds are already
-    // meaningful, means it's correct regardless of which of the two ever
-    // fires first.
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        wantsLayer = true
-        layer?.borderWidth = 1
-        layer?.borderColor = Self.bezelColor
-        layer?.cornerRadius = bounds.height / 2
+    static func wrapping(_ control: NSView) -> NSView {
+        let box = BezelBox()
+        box.translatesAutoresizingMaskIntoConstraints = false
+        control.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(control)
+        NSLayoutConstraint.activate([
+            control.topAnchor.constraint(equalTo: box.topAnchor, constant: padding),
+            control.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -padding),
+            control.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: padding),
+            control.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -padding),
+        ])
+        return box
     }
 
-    override func layout() {
-        super.layout()
-        layer?.cornerRadius = bounds.height / 2
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let lineWidth: CGFloat = 1
+        let strokeRect = bounds.insetBy(dx: lineWidth / 2, dy: lineWidth / 2)
+        let path = NSBezierPath(roundedRect: strokeRect, xRadius: strokeRect.height / 2, yRadius: strokeRect.height / 2)
+        path.lineWidth = lineWidth
+        Self.bezelColor.setStroke()
+        path.stroke()
     }
 }
 
@@ -1043,12 +1062,12 @@ extension MainWindowController: NSToolbarDelegate {
         case .navigation:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             item.label = NSLocalizedString("Back/Forward", comment: "ツールバー項目: 進む/戻るボタン")
-            item.view = navigationControl
+            item.view = BezelBox.wrapping(navigationControl)
             return item
         case .viewMode:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             item.label = NSLocalizedString("View", comment: "ツールバー項目: 表示切り替え")
-            item.view = viewModeControl
+            item.view = BezelBox.wrapping(viewModeControl)
             return item
         case .search:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
