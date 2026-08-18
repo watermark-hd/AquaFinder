@@ -1002,11 +1002,23 @@ extension MainWindowController: NSWindowDelegate {
 private final class ClassicBezelSegmentedControl: NSSegmentedControl {
     private static let bezelColor = NSColor(calibratedWhite: 0.45, alpha: 1.0).cgColor
 
+    // cornerRadius used to be set only from layout() below. On at least
+    // one Mac that first layout() pass ran before this view had a layer
+    // at all (wantsLayer is only flipped on here, once the view lands in
+    // a window) — layer?.cornerRadius silently no-op'd on a nil layer,
+    // and nothing ever forced a second layout() pass afterward to catch
+    // it up. Left at CALayer's default radius of 0, the border drew as a
+    // plain rectangle poking out past the control's own rounded native
+    // bezel — square corners where a pill was expected. Setting it here
+    // too, right after the layer actually exists and bounds are already
+    // meaningful, means it's correct regardless of which of the two ever
+    // fires first.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         wantsLayer = true
         layer?.borderWidth = 1
         layer?.borderColor = Self.bezelColor
+        layer?.cornerRadius = bounds.height / 2
     }
 
     override func layout() {
