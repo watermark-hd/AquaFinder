@@ -1008,12 +1008,18 @@ private final class ClassicSegmentedControl: NSView {
     private var pressedIndex: Int?
 
     private static let cornerRadius: CGFloat = 5
-    private static let shadowColor = NSColor(calibratedWhite: 0.25, alpha: 0.85)
-    private static let fillColor = NSColor(calibratedWhite: 0.94, alpha: 1.0)
-    private static let selectedFillColor = NSColor(calibratedWhite: 0.72, alpha: 1.0)
-    private static let dividerColor = NSColor(calibratedWhite: 0.72, alpha: 1.0)
-    private static let textColor = NSColor(calibratedWhite: 0.1, alpha: 1.0)
-    private static let disabledTextColor = NSColor(calibratedWhite: 0.1, alpha: 0.35)
+    // srgb, not calibratedWhite — calibratedWhite resolves through the
+    // "Generic Gray"/display-calibration color space, so the exact same
+    // value can render at a visibly different brightness on two Macs
+    // with different display profiles. srgb is a fixed, absolute space:
+    // what's specified here is what gets drawn, on any display.
+    private static let shadowColor = NSColor(srgbRed: 0.25, green: 0.25, blue: 0.25, alpha: 0.85)
+    // A hair off pure white reads as more "retro" than a flat white fill.
+    private static let fillColor = NSColor(srgbRed: 0.9, green: 0.9, blue: 0.9, alpha: 1.0)
+    private static let selectedFillColor = NSColor(srgbRed: 0.72, green: 0.72, blue: 0.72, alpha: 1.0)
+    private static let dividerColor = NSColor(srgbRed: 0.72, green: 0.72, blue: 0.72, alpha: 1.0)
+    private static let textColor = NSColor(srgbRed: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)
+    private static let disabledTextColor = NSColor(srgbRed: 0.1, green: 0.1, blue: 0.1, alpha: 0.35)
     private static let font = NSFont.systemFont(ofSize: 13)
     private static let horizontalPadding: CGFloat = 14
     private static let minSegmentWidth: CGFloat = 28
