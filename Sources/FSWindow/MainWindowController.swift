@@ -412,17 +412,41 @@ public final class MainWindowController: NSWindowController {
     // Adding the controls directly as subviews of the window's root
     // frame view (contentView's own superview, which spans the full
     // window including the area behind the toolbar) sidesteps both
-    // toolbar-hosting mechanisms entirely — they're just plain views
-    // pinned by Auto Layout to that root view's corners, drawn with no
-    // system wrapper of any kind. contentView's superview is technically
-    // an AppKit implementation detail (NSThemeFrame), but adding a
-    // subview to whatever view that happens to be is ordinary public
-    // NSView API, not private API use.
+    // toolbar-hosting mechanisms entirely. contentView's superview is
+    // technically an AppKit implementation detail (NSThemeFrame), but
+    // adding a subview to whatever view that happens to be is ordinary
+    // public NSView API, not private API use.
+    //
+    // Positioning them is plain frame math (updateFloatingToolbarButtonFrames
+    // below), not Auto Layout constraints — Auto Layout constraints
+    // anchored to rootView's leading/trailing (even at .defaultHigh, not
+    // required priority) fed straight into how NSWindow computes its own
+    // live-resize minimum: confirmed by isolating it, live-resizing the
+    // window narrower silently refused to go below whatever width it
+    // happened to be at, in both directions, even though nothing had an
+    // actual lower bound anywhere near that width. Plain frame
+    // assignment doesn't touch NSWindow's constraint-based sizing at
+    // all, so it can't trigger that regardless of priority.
     private func setUpFloatingToolbarButtons() {
         guard let rootView = window?.contentView?.superview else { return }
         rootView.addSubview(navigationControl)
         rootView.addSubview(viewModeControl)
         rootView.addSubview(folderNameLabel)
+        updateFloatingToolbarButtonFrames()
+    }
+
+    /// Called once from setUpFloatingToolbarButtons and again from
+    /// windowDidResize below, since these three views are positioned by
+    /// hand rather than kept in place by Auto Layout.
+    private func updateFloatingToolbarButtonFrames() {
+        guard let rootView = window?.contentView?.superview else { return }
+        let rootBounds = rootView.bounds
+        let top: CGFloat = 10
+
+        var navFrame = navigationControl.frame
+        navFrame.origin = NSPoint(x: 78, y: rootBounds.height - top - navFrame.height)
+        navigationControl.frame = navFrame
+
         // viewModeControl sits just left of where the search field
         // usually ends up (its own .search toolbar item has maxSize
         // width 240, plus the toolbar's own trailing margin) — not
@@ -431,19 +455,26 @@ public final class MainWindowController: NSWindowController {
         // outside the item's own view ("failed to host an autolayout
         // engine... constraints [that] reference views outside of the
         // item.view"), throwing immediately and crashing before the
-        // window ever appears. A fixed offset from rootView's trailing
-        // edge sidesteps that entirely, at the cost of not perfectly
-        // tracking the search field if it's ever narrower than its max.
-        NSLayoutConstraint.activate([
-            navigationControl.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 78),
-            navigationControl.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 10),
-            viewModeControl.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -270),
-            viewModeControl.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 10),
-            folderNameLabel.centerXAnchor.constraint(equalTo: rootView.centerXAnchor),
-            folderNameLabel.centerYAnchor.constraint(equalTo: navigationControl.centerYAnchor),
-            folderNameLabel.leadingAnchor.constraint(greaterThanOrEqualTo: navigationControl.trailingAnchor, constant: 16),
-            folderNameLabel.trailingAnchor.constraint(lessThanOrEqualTo: viewModeControl.leadingAnchor, constant: -16),
-        ])
+        // window ever appears. A fixed offset from the right edge
+        // sidesteps that entirely, at the cost of not perfectly tracking
+        // the search field if it's ever narrower than its max.
+        var viewModeFrame = viewModeControl.frame
+        viewModeFrame.origin = NSPoint(
+            x: rootBounds.width - 270 - viewModeFrame.width,
+            y: rootBounds.height - top - viewModeFrame.height
+        )
+        viewModeControl.frame = viewModeFrame
+
+        let labelWidth = min(
+            folderNameLabel.intrinsicContentSize.width,
+            max(0, viewModeFrame.minX - 16 - (navFrame.maxX + 16))
+        )
+        folderNameLabel.frame = NSRect(
+            x: (rootBounds.width - labelWidth) / 2,
+            y: navFrame.midY - folderNameLabel.intrinsicContentSize.height / 2,
+            width: labelWidth,
+            height: folderNameLabel.intrinsicContentSize.height
+        )
     }
 
     private func navigate(to url: URL, pushHistory: Bool) {
@@ -1047,6 +1078,7 @@ extension MainWindowController: QLPreviewPanelDelegate {}
 extension MainWindowController: NSWindowDelegate {
     public func windowDidResize(_ notification: Notification) {
         saveWindowFrame()
+        updateFloatingToolbarButtonFrames()
     }
 
     public func windowDidMove(_ notification: Notification) {
