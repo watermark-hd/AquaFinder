@@ -96,6 +96,12 @@ public final class MainWindowController: NSWindowController {
         control.segmentStyle = .rounded
         control.setEnabled(false, forSegment: 0)
         control.setEnabled(false, forSegment: 1)
+        // BezelBox's padding gives the control's own focus ring room to
+        // actually draw (it used to be clipped flush against the
+        // toolbar item's edge) — visible as a dark inner ring on click
+        // under the Graphite accent color this app's theme goes for.
+        // Meaningless chrome in a toolbar context, so just turn it off.
+        control.focusRingType = .none
         return control
     }()
 
@@ -114,6 +120,7 @@ public final class MainWindowController: NSWindowController {
         // this blended into the toolbar the same way.
         control.segmentStyle = .rounded
         control.setSelected(true, forSegment: currentViewMode.rawValue)
+        control.focusRingType = .none
         return control
     }()
 
