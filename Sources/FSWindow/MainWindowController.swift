@@ -74,39 +74,20 @@ public final class MainWindowController: NSWindowController {
     private let searchField = NSSearchField()
     private var searchQuery: NSMetadataQuery?
 
-    private lazy var navigationControl: NSSegmentedControl = {
-        let control = NSSegmentedControl(
+    private lazy var navigationControl: ClassicSegmentedControl = {
+        let control = ClassicSegmentedControl(
             labels: ["\u{25C0}", "\u{25B6}"],
             trackingMode: .momentary,
             target: self,
             action: #selector(navigationControlClicked(_:))
         )
-        // .separated (the previous style) draws almost no bezel at rest,
-        // so the button all but disappeared against the toolbar's own
-        // light-gray background. .rounded gives each segment a visible
-        // pill-shaped border and a subtle native shadow — a native
-        // AppKit draw style, not a custom layer, so this costs nothing
-        // beyond the style switch itself. It's wrapped in a BezelBox
-        // (below, see toolbar item construction) for a darker outline on
-        // top, closer still to Snow Leopard's more clearly-defined Aqua
-        // bezel — deliberately *not* done by setting wantsLayer directly
-        // on this control: that broke the control's own native cell
-        // drawing on at least one Mac (segments rendered as a flat dark
-        // gray fill instead of the system pill background).
-        control.segmentStyle = .rounded
         control.setEnabled(false, forSegment: 0)
         control.setEnabled(false, forSegment: 1)
-        // BezelBox's padding gives the control's own focus ring room to
-        // actually draw (it used to be clipped flush against the
-        // toolbar item's edge) — visible as a dark inner ring on click
-        // under the Graphite accent color this app's theme goes for.
-        // Meaningless chrome in a toolbar context, so just turn it off.
-        control.focusRingType = .none
         return control
     }()
 
-    private lazy var viewModeControl: NSSegmentedControl = {
-        let control = NSSegmentedControl(
+    private lazy var viewModeControl: ClassicSegmentedControl = {
+        let control = ClassicSegmentedControl(
             labels: [
                 NSLocalizedString("Icon", comment: "表示切り替え: アイコン表示"),
                 NSLocalizedString("List", comment: "表示切り替え: リスト表示"),
@@ -116,11 +97,7 @@ public final class MainWindowController: NSWindowController {
             target: self,
             action: #selector(viewModeChanged(_:))
         )
-        // See navigationControl above — left at the .automatic default
-        // this blended into the toolbar the same way.
-        control.segmentStyle = .rounded
         control.setSelected(true, forSegment: currentViewMode.rawValue)
-        control.focusRingType = .none
         return control
     }()
 
@@ -413,7 +390,7 @@ public final class MainWindowController: NSWindowController {
         updateStatusBar()
     }
 
-    @objc private func navigationControlClicked(_ sender: NSSegmentedControl) {
+    @objc private func navigationControlClicked(_ sender: ClassicSegmentedControl) {
         switch sender.selectedSegment {
         case 0: goBack()
         case 1: goForward()
@@ -438,7 +415,7 @@ public final class MainWindowController: NSWindowController {
         navigationControl.setEnabled(historyIndex < historyStack.count - 1, forSegment: 1)
     }
 
-    @objc private func viewModeChanged(_ sender: NSSegmentedControl) {
+    @objc private func viewModeChanged(_ sender: ClassicSegmentedControl) {
         guard let mode = ViewMode(rawValue: sender.selectedSegment) else { return }
         currentViewMode = mode
         ViewModePreferenceStore.saveViewMode(mode)
@@ -994,75 +971,168 @@ extension MainWindowController: NSWindowDelegate {
     }
 }
 
-/// .rounded's native bezel on modern macOS is a thin, faint pill —
-/// nothing like Snow Leopard's darker, more clearly-defined Aqua
-/// segmented-control border. AppKit doesn't expose a way to get that old
-/// bezel back (the pill shape itself is baked into .rounded's own system
-/// drawing).
+/// Fully custom-drawn stand-in for NSSegmentedControl, used only for the
+/// toolbar's back/forward and view-mode buttons.
 ///
-/// The first two attempts at faking it both set `wantsLayer = true`
-/// directly on the NSSegmentedControl itself, to draw a darker CALayer
-/// border on top: a fixed corner radius drew a distorted lens shape
-/// (radius bigger than the control's actual half-height), and fixing
-/// that to track real bounds in `layout()` still left the radius stuck
-/// at 0 (square corners) on at least one Mac, because `layout()` could
-/// run before `wantsLayer` had even created a layer to set it on. Worse,
-/// layer-backing the control directly turned out to break its own
-/// native cell drawing on that same Mac — segments rendered as a flat
-/// dark gray fill instead of the system's pill background, unrelated to
-/// the border bug.
-///
-/// Drawing the border on a separate, plain (non-layer-backed) wrapper
-/// view instead sidesteps both problems at once: `draw(_:)` always runs
-/// with correct final bounds (no layer-creation-order race), and the
-/// segmented control inside it is left completely alone, so its native
-/// rendering is untouched. Uses a fixed, non-dynamic gray (see
-/// rootView's own layer-color comment elsewhere in this file for why
-/// dynamic system colors are avoided) via `NSColor.set()` rather than a
-/// CGColor, since plain NSBezierPath drawing doesn't have the
-/// CALayer.borderColor appearance-tracking problem to begin with.
-private final class BezelBox: NSView {
-    private static let bezelColor = NSColor(calibratedWhite: 0.25, alpha: 0.85)
-    /// Gap between the wrapped control and the drawn border — without it
-    /// the stroke sits exactly under the control's own opaque edge
-    /// pixels and gets painted over, invisible.
-    private static let padding: CGFloat = 2
+/// Three earlier attempts all tried to keep using the real
+/// NSSegmentedControl and just decorate it: setting `wantsLayer = true`
+/// directly on the control to draw a CALayer border on top broke its own
+/// native cell drawing on one Mac (flat dark gray fill instead of the
+/// system pill background) and had corner-radius timing bugs of its
+/// own; moving that border onto a separate wrapper view fixed both, but
+/// the *shape and fill color* underneath were still whatever
+/// `.rounded`'s native bezel happens to be — and that turns out to
+/// differ a lot by macOS version (a pale full pill on newer macOS, a
+/// more rectangular, more visibly gray-filled shape on Ventura). There's
+/// no native segment style that renders identically, let alone matches
+/// Snow Leopard's actual look, on every version. Drawing the whole
+/// button by hand — shape, fill, divider, selection highlight, soft
+/// shadow — sidesteps all of that: it looks the same everywhere because
+/// none of it depends on system chrome. Uses fixed, non-dynamic grays
+/// throughout (see rootView's own layer-color comment elsewhere in this
+/// file for why dynamic system colors are avoided).
+private final class ClassicSegmentedControl: NSView {
+    enum Tracking { case momentary, selectOne }
 
-    static func wrapping(_ control: NSView) -> NSView {
-        let box = BezelBox()
-        box.translatesAutoresizingMaskIntoConstraints = false
-        control.translatesAutoresizingMaskIntoConstraints = false
-        box.addSubview(control)
-        NSLayoutConstraint.activate([
-            control.topAnchor.constraint(equalTo: box.topAnchor, constant: padding),
-            control.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -padding),
-            control.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: padding),
-            control.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -padding),
-        ])
-        return box
+    private let labels: [String]
+    private var enabledFlags: [Bool]
+    private let tracking: Tracking
+    weak var target: AnyObject?
+    var action: Selector?
+    /// For .selectOne, the persisted selection. For .momentary, only
+    /// meaningful transiently: set right before the action fires so the
+    /// handler can read which segment was clicked (mirrors
+    /// NSSegmentedControl's own momentary behavior), then never used for
+    /// drawing since momentary buttons don't stay highlighted.
+    private(set) var selectedSegment: Int = -1
+    private var pressedIndex: Int?
+
+    private static let cornerRadius: CGFloat = 5
+    private static let shadowColor = NSColor(calibratedWhite: 0.25, alpha: 0.85)
+    private static let fillColor = NSColor(calibratedWhite: 0.94, alpha: 1.0)
+    private static let selectedFillColor = NSColor(calibratedWhite: 0.72, alpha: 1.0)
+    private static let dividerColor = NSColor(calibratedWhite: 0.72, alpha: 1.0)
+    private static let textColor = NSColor(calibratedWhite: 0.1, alpha: 1.0)
+    private static let disabledTextColor = NSColor(calibratedWhite: 0.1, alpha: 0.35)
+    private static let font = NSFont.systemFont(ofSize: 13)
+    private static let horizontalPadding: CGFloat = 14
+    private static let minSegmentWidth: CGFloat = 28
+    private static let shapeHeight: CGFloat = 22
+    /// Room around the drawn shape for the shadow's blur to spread into
+    /// — without it the blur gets clipped flush at the view's own edge.
+    private static let shadowMargin: CGFloat = 2
+
+    init(labels: [String], trackingMode: Tracking, target: AnyObject?, action: Selector?) {
+        self.labels = labels
+        self.enabledFlags = Array(repeating: true, count: labels.count)
+        self.tracking = trackingMode
+        self.target = target
+        self.action = action
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
     }
 
-    // A crisp 1pt stroke read as a hard black-ish outline rather than
-    // Snow Leopard's actual look: a soft dark-gray shadow hugging the
-    // bezel rather than a drawn line. Casting a blurred NSShadow off an
-    // (invisibly) filled copy of the same pill shape gives that same
-    // soft halo instead of a line — the fill itself never shows (alpha
-    // is negligible, and the real control sits on top of it anyway), so
-    // only the shadow around its edge is visible.
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func setSelected(_ selected: Bool, forSegment segment: Int) {
+        selectedSegment = selected ? segment : (selectedSegment == segment ? -1 : selectedSegment)
+        needsDisplay = true
+    }
+
+    func setEnabled(_ enabled: Bool, forSegment segment: Int) {
+        enabledFlags[segment] = enabled
+        needsDisplay = true
+    }
+
+    override var intrinsicContentSize: NSSize {
+        let width = segmentWidths.reduce(0, +) + Self.shadowMargin * 2
+        return NSSize(width: width, height: Self.shapeHeight + Self.shadowMargin * 2)
+    }
+
+    private var segmentWidths: [CGFloat] {
+        labels.map { label in
+            let size = (label as NSString).size(withAttributes: [.font: Self.font])
+            return max(size.width + Self.horizontalPadding * 2, Self.minSegmentWidth)
+        }
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        let rect = bounds.insetBy(dx: Self.padding, dy: Self.padding)
-        let path = NSBezierPath(roundedRect: rect, xRadius: rect.height / 2, yRadius: rect.height / 2)
+        let widths = segmentWidths
+        let rect = bounds.insetBy(dx: Self.shadowMargin, dy: Self.shadowMargin)
+        let path = NSBezierPath(roundedRect: rect, xRadius: Self.cornerRadius, yRadius: Self.cornerRadius)
 
+        // The button's own soft shadow — see the class doc comment for
+        // why this is a hand-drawn blur rather than a native bezel.
         NSGraphicsContext.saveGraphicsState()
         let shadow = NSShadow()
-        shadow.shadowColor = Self.bezelColor
+        shadow.shadowColor = Self.shadowColor
         shadow.shadowBlurRadius = 2.5
         shadow.shadowOffset = .zero
         shadow.set()
-        NSColor.black.withAlphaComponent(0.001).setFill()
+        Self.fillColor.setFill()
         path.fill()
         NSGraphicsContext.restoreGraphicsState()
+
+        NSGraphicsContext.saveGraphicsState()
+        path.addClip()
+        var x = rect.minX
+        for (i, width) in widths.enumerated() {
+            let segmentRect = NSRect(x: x, y: rect.minY, width: width, height: rect.height)
+            if tracking == .selectOne, selectedSegment == i {
+                Self.selectedFillColor.setFill()
+                segmentRect.fill()
+            } else if pressedIndex == i {
+                Self.selectedFillColor.withAlphaComponent(0.5).setFill()
+                segmentRect.fill()
+            }
+            if i > 0 {
+                let divider = NSBezierPath()
+                divider.move(to: NSPoint(x: x, y: rect.minY + 3))
+                divider.line(to: NSPoint(x: x, y: rect.maxY - 3))
+                divider.lineWidth = 1
+                Self.dividerColor.setStroke()
+                divider.stroke()
+            }
+            let color = enabledFlags[i] ? Self.textColor : Self.disabledTextColor
+            let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: color]
+            let labelString = labels[i] as NSString
+            let labelSize = labelString.size(withAttributes: attrs)
+            labelString.draw(
+                at: NSPoint(x: segmentRect.midX - labelSize.width / 2, y: segmentRect.midY - labelSize.height / 2),
+                withAttributes: attrs
+            )
+            x += width
+        }
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        guard let index = segmentIndex(at: point), enabledFlags[index] else { return }
+        pressedIndex = index
+        needsDisplay = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        defer { pressedIndex = nil; needsDisplay = true }
+        let point = convert(event.locationInWindow, from: nil)
+        guard let index = segmentIndex(at: point), index == pressedIndex, enabledFlags[index] else { return }
+        selectedSegment = index
+        if let action {
+            NSApp.sendAction(action, to: target, from: self)
+        }
+    }
+
+    private func segmentIndex(at point: NSPoint) -> Int? {
+        var x = Self.shadowMargin
+        for (i, width) in segmentWidths.enumerated() {
+            if point.x >= x, point.x < x + width { return i }
+            x += width
+        }
+        return nil
     }
 }
 
@@ -1082,12 +1152,12 @@ extension MainWindowController: NSToolbarDelegate {
         case .navigation:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             item.label = NSLocalizedString("Back/Forward", comment: "ツールバー項目: 進む/戻るボタン")
-            item.view = BezelBox.wrapping(navigationControl)
+            item.view = navigationControl
             return item
         case .viewMode:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             item.label = NSLocalizedString("View", comment: "ツールバー項目: 表示切り替え")
-            item.view = BezelBox.wrapping(viewModeControl)
+            item.view = viewModeControl
             return item
         case .search:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
