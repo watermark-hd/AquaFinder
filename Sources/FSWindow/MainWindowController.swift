@@ -1024,9 +1024,14 @@ private final class ClassicSegmentedControl: NSView {
     private static let horizontalPadding: CGFloat = 14
     private static let minSegmentWidth: CGFloat = 28
     private static let shapeHeight: CGFloat = 22
-    /// Room around the drawn shape for the shadow's blur to spread into
-    /// — without it the blur gets clipped flush at the view's own edge.
-    private static let shadowMargin: CGFloat = 2
+    /// Room around the drawn shape for the shadow's blur to spread into.
+    /// NSView drawing is always clipped to the view's own bounds, so if
+    /// this is smaller than the blur radius below, the blur gets cut off
+    /// hard right at that rectangular bounds edge before it can fully
+    /// fade out — visible as a faint straight-edged rectangle boxing in
+    /// the actually-rounded button. Needs to comfortably exceed
+    /// shadowBlurRadius, not just be nonzero.
+    private static let shadowMargin: CGFloat = 5
 
     init(labels: [String], trackingMode: Tracking, target: AnyObject?, action: Selector?) {
         self.labels = labels
