@@ -433,6 +433,19 @@ public final class MainWindowController: NSWindowController {
         rootView.addSubview(viewModeControl)
         rootView.addSubview(folderNameLabel)
         updateFloatingToolbarButtonFrames()
+        // Both controls have a fixed width already (their own
+        // self-referencing size constraints from ClassicSegmentedControl's
+        // init — not dependent on being in any hierarchy), so the window's
+        // true minimum width can be computed once, right here, from the
+        // same margins updateFloatingToolbarButtonFrames uses below:
+        // enough room for the back/forward button flush against the
+        // traffic lights, the view-mode button, and the search field
+        // shrunk to just its icon — the exact point past which
+        // navigationControl and viewModeControl would start overlapping.
+        let searchIconMinWidth: CGFloat = 44
+        let minWidth = 78 + navigationControl.fittingSize.width + 16 + 16
+            + viewModeControl.fittingSize.width + 12 + searchIconMinWidth + 16
+        window?.minSize = NSSize(width: minWidth, height: window?.minSize.height ?? 400)
     }
 
     /// Called once from setUpFloatingToolbarButtons and again from
@@ -447,20 +460,30 @@ public final class MainWindowController: NSWindowController {
         navFrame.origin = NSPoint(x: 78, y: rootBounds.height - top - navFrame.height)
         navigationControl.frame = navFrame
 
-        // viewModeControl sits just left of where the search field
-        // usually ends up (its own .search toolbar item has maxSize
-        // width 240, plus the toolbar's own trailing margin) — not
-        // pinned to searchField directly: NSToolbarItemViewer explicitly
-        // refuses to host a layout engine touched by constraints from
-        // outside the item's own view ("failed to host an autolayout
-        // engine... constraints [that] reference views outside of the
-        // item.view"), throwing immediately and crashing before the
-        // window ever appears. A fixed offset from the right edge
-        // sidesteps that entirely, at the cost of not perfectly tracking
-        // the search field if it's ever narrower than its max.
+        // viewModeControl sits just left of the search field's actual
+        // current position — read directly off searchField's live frame
+        // (a plain property read, perfectly safe) rather than an Auto
+        // Layout constraint referencing it: NSToolbarItemViewer
+        // explicitly refuses to host a layout engine touched by
+        // constraints from outside the item's own view ("failed to host
+        // an autolayout engine... constraints [that] reference views
+        // outside of the item.view"), throwing immediately and crashing
+        // before the window ever appears. Reading .frame has none of
+        // that restriction, so this tracks the search field properly as
+        // the toolbar shrinks it, instead of assuming a fixed offset.
+        // Toolbar can drop the search item from its hierarchy entirely
+        // once there's not enough room even for its own minimum size —
+        // searchField.superview goes nil when that happens. Falling back
+        // to the trailing edge (rather than some stale full-width
+        // assumption) keeps this sane in that case; either way the
+        // final max(...) below is the actual guarantee against
+        // overlapping navigationControl, regardless of what the search
+        // field is doing.
+        let searchLeadingInRoot = searchField.superview.map { $0.convert(searchField.frame, to: rootView).minX }
+            ?? rootBounds.width - 16
         var viewModeFrame = viewModeControl.frame
         viewModeFrame.origin = NSPoint(
-            x: rootBounds.width - 270 - viewModeFrame.width,
+            x: max(navFrame.maxX + 16, searchLeadingInRoot - 12 - viewModeFrame.width),
             y: rootBounds.height - top - viewModeFrame.height
         )
         viewModeControl.frame = viewModeFrame
@@ -1301,7 +1324,12 @@ extension MainWindowController: NSToolbarDelegate {
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             item.label = NSLocalizedString("Search", comment: "ツールバー項目: 検索")
             item.view = searchField
-            item.minSize = NSSize(width: 120, height: searchField.intrinsicContentSize.height)
+            // Small enough to leave just the magnifying-glass icon
+            // visible once the window is narrow — the field itself
+            // (border included) is allowed to shrink away entirely
+            // before that point, only the icon is meant to survive
+            // down to the window's actual minimum width.
+            item.minSize = NSSize(width: 44, height: searchField.intrinsicContentSize.height)
             item.maxSize = NSSize(width: 240, height: searchField.intrinsicContentSize.height)
             return item
         default:
