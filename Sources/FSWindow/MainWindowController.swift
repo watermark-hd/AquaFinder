@@ -1104,12 +1104,23 @@ private final class ClassicSegmentedControl: NSView {
         var x = rect.minX
         for (i, width) in widths.enumerated() {
             let segmentRect = NSRect(x: x, y: rect.minY, width: width, height: rect.height)
+            // A full-bleed rectangle fill here has hard square corners
+            // that read as a stray box floating inside the pill's own
+            // rounded silhouette, even though it's flush against the
+            // pill's outer edge — the eye reads the sharp corners as
+            // "wrong" regardless of why they're there. Insetting it into
+            // its own small rounded rect avoids that entirely: no edge
+            // of the highlight ever touches the outer pill boundary.
+            let highlightInset: CGFloat = 2
+            let highlightRect = segmentRect.insetBy(dx: highlightInset, dy: highlightInset)
+            let highlightRadius = Self.cornerRadius - highlightInset
+            let highlightPath = NSBezierPath(roundedRect: highlightRect, xRadius: highlightRadius, yRadius: highlightRadius)
             if tracking == .selectOne, selectedSegment == i {
                 Self.selectedFillColor.setFill()
-                segmentRect.fill()
+                highlightPath.fill()
             } else if pressedIndex == i {
                 Self.selectedFillColor.withAlphaComponent(0.5).setFill()
-                segmentRect.fill()
+                highlightPath.fill()
             }
             if i > 0 {
                 let divider = NSBezierPath()
@@ -1176,15 +1187,11 @@ extension MainWindowController: NSToolbarDelegate {
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             item.label = NSLocalizedString("Back/Forward", comment: "ツールバー項目: 進む/戻るボタン")
             item.view = navigationControl
-            item.minSize = navigationControl.intrinsicContentSize
-            item.maxSize = navigationControl.intrinsicContentSize
             return item
         case .viewMode:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             item.label = NSLocalizedString("View", comment: "ツールバー項目: 表示切り替え")
             item.view = viewModeControl
-            item.minSize = viewModeControl.intrinsicContentSize
-            item.maxSize = viewModeControl.intrinsicContentSize
             return item
         case .search:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
