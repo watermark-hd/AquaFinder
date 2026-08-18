@@ -74,6 +74,23 @@ public final class MainWindowController: NSWindowController {
     private let searchField = NSSearchField()
     private var searchQuery: NSMetadataQuery?
 
+    // A custom label rather than the window's own title: AppKit
+    // positions the native title itself (roughly centered across the
+    // toolbar's real NSToolbarItems), with no awareness of the floating
+    // nav/view-mode buttons layered on top of the toolbar outside that
+    // system — for some folder-name lengths it lands the title text
+    // right underneath navigationControl. A plain label pinned exactly
+    // where we want it sidesteps that entirely.
+    private let folderNameLabel: NSTextField = {
+        let label = NSTextField(labelWithString: "")
+        label.font = NSFont.boldSystemFont(ofSize: 13)
+        label.textColor = NSColor(srgbRed: 0.15, green: 0.15, blue: 0.15, alpha: 1.0)
+        label.alignment = .center
+        label.lineBreakMode = .byTruncatingMiddle
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
     private lazy var navigationControl: ClassicSegmentedControl = {
         let control = ClassicSegmentedControl(
             labels: ["\u{25C0}", "\u{25B6}"],
@@ -118,6 +135,11 @@ public final class MainWindowController: NSWindowController {
             defer: false
         )
         window.title = "AquaFinder"
+        // The visible folder name is drawn by folderNameLabel instead
+        // (see its own doc comment for why) — `title` itself stays set
+        // so Mission Control/Window menu/VoiceOver still have something
+        // meaningful, it just never gets painted into the toolbar.
+        window.titleVisibility = .hidden
         // AppDelegate が NSApp.appearance を .aqua に固定していても、Apple
         // Silicon＋最近の macOS ではツールバー/タイトルバー付近の一部マテリアル
         // がシステムのダーク設定を拾ってしまうことがある。ウィンドウ単体にも
@@ -229,6 +251,7 @@ public final class MainWindowController: NSWindowController {
 
         setUpSpacebarMonitor()
         setUpSearchField()
+        setUpFloatingToolbarButtons()
 
         // Assigned last, once the frame has fully settled from everything
         // above — those layout passes each resize the window in ways
@@ -369,7 +392,13 @@ public final class MainWindowController: NSWindowController {
         if #available(macOS 11.0, *) {
             window?.toolbarStyle = .unified
         }
-        setUpFloatingToolbarButtons()
+        // NOT called from here — setUpFloatingToolbarButtons() pins
+        // viewModeControl to searchField, and searchField doesn't get
+        // its own superview (as the search toolbar item's view) until
+        // setUpSearchField() runs later in init. Activating a
+        // cross-hierarchy constraint against a view with no superview
+        // yet throws immediately, crashing on launch before the window
+        // ever appears. See the call in init, after setUpSearchField().
     }
 
     // navigationControl/viewModeControl used to be NSToolbarItems, then
@@ -393,19 +422,27 @@ public final class MainWindowController: NSWindowController {
         guard let rootView = window?.contentView?.superview else { return }
         rootView.addSubview(navigationControl)
         rootView.addSubview(viewModeControl)
-        // viewModeControl sits just left of the search field (both share
-        // rootView as a common ancestor via NSThemeFrame, so a
-        // cross-hierarchy constraint resolves fine even though
-        // searchField's immediate superview is the toolbar's own),
-        // matching classic Finder's view-mode-icons-next-to-search
-        // layout — freeing up the actual toolbar center for the window
-        // title (current folder name), which used to sit right where
-        // viewModeControl was.
+        rootView.addSubview(folderNameLabel)
+        // viewModeControl sits just left of where the search field
+        // usually ends up (its own .search toolbar item has maxSize
+        // width 240, plus the toolbar's own trailing margin) — not
+        // pinned to searchField directly: NSToolbarItemViewer explicitly
+        // refuses to host a layout engine touched by constraints from
+        // outside the item's own view ("failed to host an autolayout
+        // engine... constraints [that] reference views outside of the
+        // item.view"), throwing immediately and crashing before the
+        // window ever appears. A fixed offset from rootView's trailing
+        // edge sidesteps that entirely, at the cost of not perfectly
+        // tracking the search field if it's ever narrower than its max.
         NSLayoutConstraint.activate([
             navigationControl.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 78),
             navigationControl.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 10),
-            viewModeControl.trailingAnchor.constraint(equalTo: searchField.leadingAnchor, constant: -12),
+            viewModeControl.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -270),
             viewModeControl.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 10),
+            folderNameLabel.centerXAnchor.constraint(equalTo: rootView.centerXAnchor),
+            folderNameLabel.centerYAnchor.constraint(equalTo: navigationControl.centerYAnchor),
+            folderNameLabel.leadingAnchor.constraint(greaterThanOrEqualTo: navigationControl.trailingAnchor, constant: 16),
+            folderNameLabel.trailingAnchor.constraint(lessThanOrEqualTo: viewModeControl.leadingAnchor, constant: -16),
         ])
     }
 
@@ -436,7 +473,9 @@ public final class MainWindowController: NSWindowController {
     /// component, etc.). Sits in the toolbar's center now that the
     /// view-mode control moved next to the search field instead.
     private func updateWindowTitle() {
-        window?.title = FileManager.default.displayName(atPath: currentRootURL.path)
+        let name = FileManager.default.displayName(atPath: currentRootURL.path)
+        window?.title = name
+        folderNameLabel.stringValue = name
     }
 
     @objc private func navigationControlClicked(_ sender: ClassicSegmentedControl) {
