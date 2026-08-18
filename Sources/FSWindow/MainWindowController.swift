@@ -118,6 +118,14 @@ public final class MainWindowController: NSWindowController {
             defer: false
         )
         window.title = "AquaFinder"
+        // The floating nav/view-mode buttons sit in the same combined
+        // title+toolbar row as the window title text (unified style
+        // merges them into one strip) and can end up drawn right on top
+        // of it. Hiding the visible title — the `title` property itself
+        // stays set, so Mission Control/Window menu/VoiceOver are
+        // unaffected — is the standard fix for toolbar-integrated
+        // windows that don't need the redundant title text shown.
+        window.titleVisibility = .hidden
         // AppDelegate が NSApp.appearance を .aqua に固定していても、Apple
         // Silicon＋最近の macOS ではツールバー/タイトルバー付近の一部マテリアル
         // がシステムのダーク設定を拾ってしまうことがある。ウィンドウ単体にも
@@ -368,6 +376,36 @@ public final class MainWindowController: NSWindowController {
         if #available(macOS 11.0, *) {
             window?.toolbarStyle = .unified
         }
+        setUpFloatingToolbarButtons()
+    }
+
+    // navigationControl/viewModeControl used to be NSToolbarItems, then
+    // NSTitlebarAccessoryViewControllers — see the comment on
+    // toolbarDefaultItemIdentifiers below for why neither worked out.
+    // Titlebar accessories specifically never appeared at all: with
+    // titlebarAppearsTransparent + .unified merging the titlebar and
+    // toolbar into one continuous strip, there's no separate titlebar
+    // region left for an accessory to actually occupy.
+    //
+    // Adding the controls directly as subviews of the window's root
+    // frame view (contentView's own superview, which spans the full
+    // window including the area behind the toolbar) sidesteps both
+    // toolbar-hosting mechanisms entirely — they're just plain views
+    // pinned by Auto Layout to that root view's corners, drawn with no
+    // system wrapper of any kind. contentView's superview is technically
+    // an AppKit implementation detail (NSThemeFrame), but adding a
+    // subview to whatever view that happens to be is ordinary public
+    // NSView API, not private API use.
+    private func setUpFloatingToolbarButtons() {
+        guard let rootView = window?.contentView?.superview else { return }
+        rootView.addSubview(navigationControl)
+        rootView.addSubview(viewModeControl)
+        NSLayoutConstraint.activate([
+            navigationControl.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 78),
+            navigationControl.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 10),
+            viewModeControl.leadingAnchor.constraint(equalTo: navigationControl.trailingAnchor, constant: 12),
+            viewModeControl.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 10),
+        ])
     }
 
     private func navigate(to url: URL, pushHistory: Bool) {
@@ -1007,7 +1045,10 @@ private final class ClassicSegmentedControl: NSView {
     private(set) var selectedSegment: Int = -1
     private var pressedIndex: Int?
 
-    private static let cornerRadius: CGFloat = 5
+    // Was 5 — rounded enough to read as a round/pill button rather than
+    // the plain square button on a gray toolbar that was actually
+    // wanted. 2 keeps just enough softening to not look razor-sharp.
+    private static let cornerRadius: CGFloat = 2
     // srgb, not calibratedWhite — calibratedWhite resolves through the
     // "Generic Gray"/display-calibration color space, so the exact same
     // value can render at a visibly different brightness on two Macs
@@ -1092,7 +1133,7 @@ private final class ClassicSegmentedControl: NSView {
         NSGraphicsContext.saveGraphicsState()
         let shadow = NSShadow()
         shadow.shadowColor = Self.shadowColor
-        shadow.shadowBlurRadius = 2.5
+        shadow.shadowBlurRadius = 1.0
         shadow.shadowOffset = .zero
         shadow.set()
         Self.fillColor.setFill()
@@ -1104,23 +1145,16 @@ private final class ClassicSegmentedControl: NSView {
         var x = rect.minX
         for (i, width) in widths.enumerated() {
             let segmentRect = NSRect(x: x, y: rect.minY, width: width, height: rect.height)
-            // A full-bleed rectangle fill here has hard square corners
-            // that read as a stray box floating inside the pill's own
-            // rounded silhouette, even though it's flush against the
-            // pill's outer edge — the eye reads the sharp corners as
-            // "wrong" regardless of why they're there. Insetting it into
-            // its own small rounded rect avoids that entirely: no edge
-            // of the highlight ever touches the outer pill boundary.
-            let highlightInset: CGFloat = 2
-            let highlightRect = segmentRect.insetBy(dx: highlightInset, dy: highlightInset)
-            let highlightRadius = Self.cornerRadius - highlightInset
-            let highlightPath = NSBezierPath(roundedRect: highlightRect, xRadius: highlightRadius, yRadius: highlightRadius)
+            // Now that the outer shape itself is nearly square
+            // (cornerRadius above), a plain full-bleed rectangle here
+            // matches it — no more mismatch between a round outer edge
+            // and a square inner highlight, so no inset trick needed.
             if tracking == .selectOne, selectedSegment == i {
                 Self.selectedFillColor.setFill()
-                highlightPath.fill()
+                segmentRect.fill()
             } else if pressedIndex == i {
                 Self.selectedFillColor.withAlphaComponent(0.5).setFill()
-                highlightPath.fill()
+                segmentRect.fill()
             }
             if i > 0 {
                 let divider = NSBezierPath()
@@ -1171,8 +1205,6 @@ private final class ClassicSegmentedControl: NSView {
 }
 
 private extension NSToolbarItem.Identifier {
-    static let navigation = NSToolbarItem.Identifier("Navigation")
-    static let viewMode = NSToolbarItem.Identifier("ViewMode")
     static let search = NSToolbarItem.Identifier("Search")
 }
 
@@ -1183,16 +1215,6 @@ extension MainWindowController: NSToolbarDelegate {
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
         switch itemIdentifier {
-        case .navigation:
-            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-            item.label = NSLocalizedString("Back/Forward", comment: "ツールバー項目: 進む/戻るボタン")
-            item.view = navigationControl
-            return item
-        case .viewMode:
-            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-            item.label = NSLocalizedString("View", comment: "ツールバー項目: 表示切り替え")
-            item.view = viewModeControl
-            return item
         case .search:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             item.label = NSLocalizedString("Search", comment: "ツールバー項目: 検索")
@@ -1205,11 +1227,19 @@ extension MainWindowController: NSToolbarDelegate {
         }
     }
 
+    // navigationControl and viewModeControl used to be .navigation/.viewMode
+    // NSToolbarItems here. Any NSToolbarItem given a custom `view` gets
+    // wrapped by AppKit in a private NSToolbarItemViewer that clips it to
+    // a rounded-pill mask via raw Quartz drawing — invisible to every
+    // public layer/mask/isBordered/toolbarStyle property, and with no
+    // documented way to opt out. They're floated over the window's root
+    // frame view instead now (see setUpFloatingToolbarButtons) — search
+    // is the only thing left that still needs to be a real toolbar item.
     public func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.navigation, .flexibleSpace, .viewMode, .flexibleSpace, .search]
+        [.flexibleSpace, .search]
     }
 
     public func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.navigation, .viewMode, .search, .flexibleSpace]
+        [.search, .flexibleSpace]
     }
 }
