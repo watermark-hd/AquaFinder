@@ -118,14 +118,6 @@ public final class MainWindowController: NSWindowController {
             defer: false
         )
         window.title = "AquaFinder"
-        // The floating nav/view-mode buttons sit in the same combined
-        // title+toolbar row as the window title text (unified style
-        // merges them into one strip) and can end up drawn right on top
-        // of it. Hiding the visible title — the `title` property itself
-        // stays set, so Mission Control/Window menu/VoiceOver are
-        // unaffected — is the standard fix for toolbar-integrated
-        // windows that don't need the redundant title text shown.
-        window.titleVisibility = .hidden
         // AppDelegate が NSApp.appearance を .aqua に固定していても、Apple
         // Silicon＋最近の macOS ではツールバー/タイトルバー付近の一部マテリアル
         // がシステムのダーク設定を拾ってしまうことがある。ウィンドウ単体にも
@@ -180,6 +172,7 @@ public final class MainWindowController: NSWindowController {
         setUpToolbar()
         showActiveViewController()
         updateStatusBar()
+        updateWindowTitle()
         applyAppearancePreferences()
         iconVC.applySortField(sortField)
         columnVC.applySortField(sortField)
@@ -400,10 +393,18 @@ public final class MainWindowController: NSWindowController {
         guard let rootView = window?.contentView?.superview else { return }
         rootView.addSubview(navigationControl)
         rootView.addSubview(viewModeControl)
+        // viewModeControl sits just left of the search field (both share
+        // rootView as a common ancestor via NSThemeFrame, so a
+        // cross-hierarchy constraint resolves fine even though
+        // searchField's immediate superview is the toolbar's own),
+        // matching classic Finder's view-mode-icons-next-to-search
+        // layout — freeing up the actual toolbar center for the window
+        // title (current folder name), which used to sit right where
+        // viewModeControl was.
         NSLayoutConstraint.activate([
             navigationControl.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 78),
             navigationControl.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 10),
-            viewModeControl.leadingAnchor.constraint(equalTo: navigationControl.trailingAnchor, constant: 12),
+            viewModeControl.trailingAnchor.constraint(equalTo: searchField.leadingAnchor, constant: -12),
             viewModeControl.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 10),
         ])
     }
@@ -426,6 +427,16 @@ public final class MainWindowController: NSWindowController {
         directoryWatcher.startWatching(url)
         updateNavigationButtonsState()
         updateStatusBar()
+        updateWindowTitle()
+    }
+
+    /// Real Finder shows the current folder's name in the title bar —
+    /// `FileManager.displayName` gives the same localized names it uses
+    /// there ("デスクトップ" rather than the raw "Desktop" path
+    /// component, etc.). Sits in the toolbar's center now that the
+    /// view-mode control moved next to the search field instead.
+    private func updateWindowTitle() {
+        window?.title = FileManager.default.displayName(atPath: currentRootURL.path)
     }
 
     @objc private func navigationControlClicked(_ sender: ClassicSegmentedControl) {
@@ -1045,10 +1056,10 @@ private final class ClassicSegmentedControl: NSView {
     private(set) var selectedSegment: Int = -1
     private var pressedIndex: Int?
 
-    // Was 5 — rounded enough to read as a round/pill button rather than
-    // the plain square button on a gray toolbar that was actually
-    // wanted. 2 keeps just enough softening to not look razor-sharp.
-    private static let cornerRadius: CGFloat = 2
+    // Was 5 (too round, read as a pill) then 2 (a bit too sharp per
+    // feedback) — 4 is a light touch of softening on a still-clearly
+    // square button.
+    private static let cornerRadius: CGFloat = 4
     // srgb, not calibratedWhite — calibratedWhite resolves through the
     // "Generic Gray"/display-calibration color space, so the exact same
     // value can render at a visibly different brightness on two Macs
