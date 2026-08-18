@@ -71,18 +71,12 @@ final class StatusBarView: NSView {
         label.stringValue = String(format: pathFormat, Self.displayPath(for: directoryURL), statsText)
     }
 
-    /// ホームディレクトリ配下は "~" に短縮したフルパス表示（ステータスバーの
-    /// 限られた幅で読みやすくするため）。
+    /// フルパスをそのまま表示する。以前はホームディレクトリ配下を "~" に
+    /// 短縮していたが、その場合ホーム直下では "~" の1文字だけになり、
+    /// パスが表示されていないと誤解されやすかったため、常にフルパスを
+    /// 表示するようにした。
     private static func displayPath(for url: URL) -> String {
-        let home = NSHomeDirectory()
-        let path = url.path
-        if path == home {
-            return "~"
-        }
-        if path.hasPrefix(home + "/") {
-            return "~" + path.dropFirst(home.count)
-        }
-        return path
+        url.path
     }
 }
 

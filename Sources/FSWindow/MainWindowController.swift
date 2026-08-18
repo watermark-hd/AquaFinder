@@ -72,6 +72,11 @@ public final class MainWindowController: NSWindowController {
     private var isQuickLookVisible = false
 
     private let searchField = NSSearchField()
+    /// Its minSize/maxSize get actively driven (both to the same value)
+    /// from updateFloatingToolbarButtonFrames on every resize — see the
+    /// comment there for why this has to command the toolbar rather
+    /// than just read it.
+    private weak var searchToolbarItem: NSToolbarItem?
     private var searchQuery: NSMetadataQuery?
 
     // A custom label rather than the window's own title: AppKit
@@ -436,21 +441,39 @@ public final class MainWindowController: NSWindowController {
         // Both controls have a fixed width already (their own
         // self-referencing size constraints from ClassicSegmentedControl's
         // init — not dependent on being in any hierarchy), so the window's
-        // true minimum width can be computed once, right here, from the
-        // same margins updateFloatingToolbarButtonFrames uses below:
-        // enough room for the back/forward button flush against the
-        // traffic lights, the view-mode button, and the search field
-        // shrunk to just its icon — the exact point past which
-        // navigationControl and viewModeControl would start overlapping.
-        let searchIconMinWidth: CGFloat = 44
+        // true minimum width can be computed once, right here: enough
+        // room for the back/forward button flush against the traffic
+        // lights, the view-mode button, and the search field shrunk to
+        // just its icon (Self.searchIconMinWidth) — the exact point past
+        // which navigationControl and viewModeControl would start
+        // overlapping. Same formula updateFloatingToolbarButtonFrames
+        // uses below to size the search item itself.
         let minWidth = 78 + navigationControl.fittingSize.width + 16 + 16
-            + viewModeControl.fittingSize.width + 12 + searchIconMinWidth + 16
+            + viewModeControl.fittingSize.width + 12 + Self.searchIconMinWidth + 16
         window?.minSize = NSSize(width: minWidth, height: window?.minSize.height ?? 400)
     }
+
+    private static let searchIconMinWidth: CGFloat = 44
+    private static let searchMaxWidth: CGFloat = 240
 
     /// Called once from setUpFloatingToolbarButtons and again from
     /// windowDidResize below, since these three views are positioned by
     /// hand rather than kept in place by Auto Layout.
+    ///
+    /// The search field's own width is *driven*, not read: NSToolbar
+    /// lays out its real items (here, just .search plus flexible space)
+    /// with zero awareness that navigationControl/viewModeControl exist
+    /// at all, since they aren't toolbar items — confirmed by watching
+    /// it hold the search field at its full 240pt width right up until
+    /// the window was already too narrow for that plus these floating
+    /// views to coexist, rather than shrinking proactively to make room.
+    /// Reading searchField's resulting frame back and reacting to it
+    /// (an earlier version of this method) therefore chased a number
+    /// that had no relationship to what this layout actually needed.
+    /// Computing the search width this method wants, and setting the
+    /// toolbar item's minSize/maxSize to that same value every time,
+    /// makes the toolbar follow this layout instead of the other way
+    /// around.
     private func updateFloatingToolbarButtonFrames() {
         guard let rootView = window?.contentView?.superview else { return }
         let rootBounds = rootView.bounds
@@ -460,40 +483,59 @@ public final class MainWindowController: NSWindowController {
         navFrame.origin = NSPoint(x: 78, y: rootBounds.height - top - navFrame.height)
         navigationControl.frame = navFrame
 
-        // viewModeControl sits just left of the search field's actual
-        // current position — read directly off searchField's live frame
-        // (a plain property read, perfectly safe) rather than an Auto
-        // Layout constraint referencing it: NSToolbarItemViewer
-        // explicitly refuses to host a layout engine touched by
-        // constraints from outside the item's own view ("failed to host
-        // an autolayout engine... constraints [that] reference views
-        // outside of the item.view"), throwing immediately and crashing
-        // before the window ever appears. Reading .frame has none of
-        // that restriction, so this tracks the search field properly as
-        // the toolbar shrinks it, instead of assuming a fixed offset.
-        // Toolbar can drop the search item from its hierarchy entirely
-        // once there's not enough room even for its own minimum size —
-        // searchField.superview goes nil when that happens. Falling back
-        // to the trailing edge (rather than some stale full-width
-        // assumption) keeps this sane in that case; either way the
-        // final max(...) below is the actual guarantee against
-        // overlapping navigationControl, regardless of what the search
-        // field is doing.
-        let searchLeadingInRoot = searchField.superview.map { $0.convert(searchField.frame, to: rootView).minX }
-            ?? rootBounds.width - 16
+        let viewModeWidth = viewModeControl.fittingSize.width
+        let trailingMargin: CGFloat = 16
+        let searchGap: CGFloat = 12
+        let searchWidth = min(
+            Self.searchMaxWidth,
+            max(Self.searchIconMinWidth, rootBounds.width - trailingMargin - searchGap - viewModeWidth - navFrame.maxX - 16)
+        )
+        if let searchToolbarItem, searchToolbarItem.minSize.width != searchWidth {
+            let height = searchField.intrinsicContentSize.height
+            searchToolbarItem.minSize = NSSize(width: searchWidth, height: height)
+            searchToolbarItem.maxSize = NSSize(width: searchWidth, height: height)
+        }
+        // Same rendering-overflow quirk as folderNameLabel below, just
+        // on a native control: NSSearchField draws its placeholder text
+        // at natural width regardless of how narrow the field itself
+        // has been forced to, so a shrunk field still visibly spilled
+        // placeholder text out over viewModeControl. Clearing the
+        // placeholder once the field is too narrow to actually show it
+        // leaves only the (always-drawn) magnifying glass icon, which
+        // is what was actually asked for.
+        searchField.placeholderString = searchWidth < 80 ? nil : Self.searchPlaceholder
+
         var viewModeFrame = viewModeControl.frame
         viewModeFrame.origin = NSPoint(
-            x: max(navFrame.maxX + 16, searchLeadingInRoot - 12 - viewModeFrame.width),
+            x: max(navFrame.maxX + 16, rootBounds.width - trailingMargin - searchWidth - searchGap - viewModeFrame.width),
             y: rootBounds.height - top - viewModeFrame.height
         )
         viewModeControl.frame = viewModeFrame
 
-        let labelWidth = min(
-            folderNameLabel.intrinsicContentSize.width,
-            max(0, viewModeFrame.minX - 16 - (navFrame.maxX + 16))
-        )
+        // Centered within the actual gap between the two buttons, not
+        // within the window as a whole: the gap itself isn't necessarily
+        // centered in the window (navigationControl sits at a fixed x,
+        // viewModeControl at a computed one), so centering on
+        // rootBounds.width instead of the gap could — and did — place
+        // even a correctly-narrowed label overlapping one of the
+        // buttons, since a narrow-but-misplaced frame is still
+        // misplaced.
+        let gapStart = navFrame.maxX + 16
+        let gapEnd = viewModeFrame.minX - 16
+        let availableWidth = max(0, gapEnd - gapStart)
+        let labelWidth = min(folderNameLabel.intrinsicContentSize.width, availableWidth)
+        // A narrow-but-nonzero frame still let NSTextField's own text
+        // rendering spill out past its bounds rather than truncating
+        // down to nothing (label-style NSTextFields don't clip to frame
+        // the way a bordered/bezeled one would) — visible as the folder
+        // name bleeding across the view-mode button even though the
+        // *computed* width here was already correctly near zero.
+        // Hiding it outright below a legible minimum sidesteps that
+        // rendering quirk entirely instead of fighting it.
+        let minimumLegibleWidth: CGFloat = 30
+        folderNameLabel.isHidden = labelWidth < minimumLegibleWidth
         folderNameLabel.frame = NSRect(
-            x: (rootBounds.width - labelWidth) / 2,
+            x: gapStart + (availableWidth - labelWidth) / 2,
             y: navFrame.midY - folderNameLabel.intrinsicContentSize.height / 2,
             width: labelWidth,
             height: folderNameLabel.intrinsicContentSize.height
@@ -738,11 +780,13 @@ public final class MainWindowController: NSWindowController {
     // MARK: - Search
 
     private func setUpSearchField() {
-        searchField.placeholderString = NSLocalizedString("Search This Folder", comment: "検索フィールドのプレースホルダー")
+        searchField.placeholderString = Self.searchPlaceholder
         searchField.target = self
         searchField.action = #selector(searchFieldChanged)
         searchField.sendsSearchStringImmediately = true
     }
+
+    private static let searchPlaceholder = NSLocalizedString("Search This Folder", comment: "検索フィールドのプレースホルダー")
 
     @objc private func searchFieldChanged(_ sender: NSSearchField) {
         let text = sender.stringValue
@@ -1331,6 +1375,8 @@ extension MainWindowController: NSToolbarDelegate {
             // down to the window's actual minimum width.
             item.minSize = NSSize(width: 44, height: searchField.intrinsicContentSize.height)
             item.maxSize = NSSize(width: 240, height: searchField.intrinsicContentSize.height)
+            searchToolbarItem = item
+            updateFloatingToolbarButtonFrames()
             return item
         default:
             return nil
