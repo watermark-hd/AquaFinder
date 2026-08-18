@@ -1036,6 +1036,18 @@ private final class ClassicSegmentedControl: NSView {
         self.action = action
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
+        // Relying on intrinsicContentSize alone left this at the mercy
+        // of however NSToolbarItem resolves a custom view's size — which
+        // turned out not to be consistent: on at least one Mac the item
+        // collapsed down to something closer to square than the actual
+        // multi-segment width, squashing every segment's divider/text
+        // into a sliver in the middle of what read as a plain rounded
+        // (near-circular) box. Explicit constraints pin the real size
+        // directly, leaving nothing for the toolbar to get wrong. Labels
+        // never change after init, so this only needs to happen once.
+        let size = intrinsicContentSize
+        widthAnchor.constraint(equalToConstant: size.width).isActive = true
+        heightAnchor.constraint(equalToConstant: size.height).isActive = true
     }
 
     required init?(coder: NSCoder) {
@@ -1159,11 +1171,15 @@ extension MainWindowController: NSToolbarDelegate {
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             item.label = NSLocalizedString("Back/Forward", comment: "ツールバー項目: 進む/戻るボタン")
             item.view = navigationControl
+            item.minSize = navigationControl.intrinsicContentSize
+            item.maxSize = navigationControl.intrinsicContentSize
             return item
         case .viewMode:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             item.label = NSLocalizedString("View", comment: "ツールバー項目: 表示切り替え")
             item.view = viewModeControl
+            item.minSize = viewModeControl.intrinsicContentSize
+            item.maxSize = viewModeControl.intrinsicContentSize
             return item
         case .search:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
