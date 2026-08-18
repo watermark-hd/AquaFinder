@@ -1022,7 +1022,7 @@ extension MainWindowController: NSWindowDelegate {
 /// CGColor, since plain NSBezierPath drawing doesn't have the
 /// CALayer.borderColor appearance-tracking problem to begin with.
 private final class BezelBox: NSView {
-    private static let bezelColor = NSColor(calibratedWhite: 0.45, alpha: 1.0)
+    private static let bezelColor = NSColor(calibratedWhite: 0.25, alpha: 0.85)
     /// Gap between the wrapped control and the drawn border — without it
     /// the stroke sits exactly under the control's own opaque edge
     /// pixels and gets painted over, invisible.
@@ -1042,14 +1042,27 @@ private final class BezelBox: NSView {
         return box
     }
 
+    // A crisp 1pt stroke read as a hard black-ish outline rather than
+    // Snow Leopard's actual look: a soft dark-gray shadow hugging the
+    // bezel rather than a drawn line. Casting a blurred NSShadow off an
+    // (invisibly) filled copy of the same pill shape gives that same
+    // soft halo instead of a line — the fill itself never shows (alpha
+    // is negligible, and the real control sits on top of it anyway), so
+    // only the shadow around its edge is visible.
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        let lineWidth: CGFloat = 1
-        let strokeRect = bounds.insetBy(dx: lineWidth / 2, dy: lineWidth / 2)
-        let path = NSBezierPath(roundedRect: strokeRect, xRadius: strokeRect.height / 2, yRadius: strokeRect.height / 2)
-        path.lineWidth = lineWidth
-        Self.bezelColor.setStroke()
-        path.stroke()
+        let rect = bounds.insetBy(dx: Self.padding, dy: Self.padding)
+        let path = NSBezierPath(roundedRect: rect, xRadius: rect.height / 2, yRadius: rect.height / 2)
+
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = Self.bezelColor
+        shadow.shadowBlurRadius = 2.5
+        shadow.shadowOffset = .zero
+        shadow.set()
+        NSColor.black.withAlphaComponent(0.001).setFill()
+        path.fill()
+        NSGraphicsContext.restoreGraphicsState()
     }
 }
 
