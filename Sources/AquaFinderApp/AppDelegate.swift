@@ -122,6 +122,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, AppWindowOpening {
             NSLocalizedString("New Folder", comment: "Fileメニュー: 新規フォルダ"),
             action: #selector(MainWindowController.newFolder(_:)), keyEquivalent: "n", modifiers: [.command, .shift]
         )
+        // Snow Leopard Finder's File menu has Open right after New Folder,
+        // ahead of the separator before Get Info — matches that order.
+        addItem(
+            NSLocalizedString("Open", comment: "Fileメニュー: 開く"),
+            action: #selector(MainWindowController.openSelection(_:)), keyEquivalent: "o"
+        )
         menu.addItem(.separator())
         addItem(
             NSLocalizedString("Get Info", comment: "Fileメニュー: 情報を見る"),

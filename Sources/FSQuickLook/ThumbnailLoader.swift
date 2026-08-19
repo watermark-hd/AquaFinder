@@ -9,10 +9,15 @@ import QuickLookThumbnailing
 public enum ThumbnailLoader {
     private static var cache: [URL: NSImage] = [:]
 
-    public static func thumbnail(for url: URL, size: CGSize, scale: CGFloat, completion: @escaping (NSImage) -> Void) {
+    /// Returns the underlying request so the caller can cancel it (see
+    /// `cancel(_:)`) if the item it was for gets recycled before it
+    /// finishes — nil when served straight from the cache, since there's
+    /// nothing in flight to cancel.
+    @discardableResult
+    public static func thumbnail(for url: URL, size: CGSize, scale: CGFloat, completion: @escaping (NSImage) -> Void) -> QLThumbnailGenerator.Request? {
         if let cached = cache[url] {
             completion(cached)
-            return
+            return nil
         }
         let request = QLThumbnailGenerator.Request(
             fileAt: url, size: size, scale: scale, representationTypes: .thumbnail
@@ -25,5 +30,17 @@ public enum ThumbnailLoader {
                 completion(image)
             }
         }
+        return request
+    }
+
+    /// Callers (see `IconCollectionViewItem`) should call this when the
+    /// cell a request was for gets reused for a different item before the
+    /// original request finished, so the actual (CPU-heavy) generation
+    /// work stops instead of continuing to run for an item nothing shows
+    /// anymore. Matters most during a fast scroll fling on slower Macs,
+    /// where dozens of these can otherwise pile up on background threads
+    /// competing with the UI thread for CPU time.
+    public static func cancel(_ request: QLThumbnailGenerator.Request) {
+        QLThumbnailGenerator.shared.cancel(request)
     }
 }

@@ -127,6 +127,29 @@ public final class ColumnBrowserViewController: NSViewController {
     /// volume, or a network share have no meaningful ancestor chain to
     /// reconstruct anyway, so those just root at `url` directly as before.
     public func setRoot(_ url: URL) {
+        // Column view can be sent a new root while it isn't the visible
+        // view mode at all (see the doc comment above) — in that case
+        // this controller's `view` was never accessed, so `viewDidLoad`
+        // never ran and `browser.delegate` is still nil. Calling
+        // `browser.selectionIndexPath =` on a browser in that state
+        // throws "setSelectionIndexPath: is not supported for browsers
+        // with matrix delegates" (NSBrowser falls back to assuming a
+        // legacy matrix-based delegate when no item-based one has been
+        // registered yet) — an Objective-C exception Swift can't catch,
+        // which crashes the app outright, or — if raised from inside
+        // AppKit's own mouse-tracking dispatch, which happens to absorb
+        // it — just silently aborts this method partway through,
+        // looking like a dead double-click since `navigate(to:)` never
+        // reaches its later listVC/iconVC/updateWindowTitle calls either
+        // way. `loadViewIfNeeded()` forces `viewDidLoad` (and so
+        // `browser.delegate = self`) to run without actually showing
+        // the view, fixing both failure modes at the source.
+        // `loadViewIfNeeded()` itself needs macOS 14+; touching `view`
+        // does the same lazy-load (triggering `viewDidLoad`) on every
+        // version back to 10.10, which is all this needs.
+        if !isViewLoaded {
+            _ = view
+        }
         currentRoot = Self.ancestorRoot(for: url)
         lastSelectedItem = nil
         browser.loadColumnZero()

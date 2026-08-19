@@ -2,6 +2,7 @@ import AppKit
 import FSCore
 import FSUIKit
 import FSQuickLook
+import QuickLookThumbnailing
 
 /// A single icon+label cell. Shows NSWorkspace's generic file icon
 /// immediately, then upgrades to a real QuickLookThumbnailing-generated
@@ -17,6 +18,7 @@ final class IconCollectionViewItem: NSCollectionViewItem {
     var onCommitRename: ((FileItem, String) -> Void)?
 
     private var fileItem: FileItem?
+    private var pendingThumbnailRequest: QLThumbnailGenerator.Request?
 
     // NSCollectionViewItem tracks `isSelected` automatically but, unlike
     // NSTableView/NSOutlineView rows, draws no highlight of its own —
@@ -100,7 +102,20 @@ final class IconCollectionViewItem: NSCollectionViewItem {
         }
     }
 
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        cancelPendingThumbnailRequest()
+    }
+
+    private func cancelPendingThumbnailRequest() {
+        if let pendingThumbnailRequest {
+            ThumbnailLoader.cancel(pendingThumbnailRequest)
+        }
+        pendingThumbnailRequest = nil
+    }
+
     func configure(with fileItem: FileItem, textSize: TextSize) {
+        cancelPendingThumbnailRequest()
         self.fileItem = fileItem
         imageWidthConstraint.constant = textSize.gridIconSize
         imageHeightConstraint.constant = textSize.gridIconSize
@@ -115,11 +130,12 @@ final class IconCollectionViewItem: NSCollectionViewItem {
 
         let requestedURL = fileItem.url
         let iconSize = textSize.gridIconSize
-        ThumbnailLoader.thumbnail(for: requestedURL, size: CGSize(width: iconSize, height: iconSize), scale: 2) { [weak self] image in
+        pendingThumbnailRequest = ThumbnailLoader.thumbnail(for: requestedURL, size: CGSize(width: iconSize, height: iconSize), scale: 2) { [weak self] image in
             // The cell may have been recycled for a different item by the
             // time this async callback fires — only apply it if it's
             // still showing the URL that was requested.
             guard self?.fileItem?.url == requestedURL else { return }
+            self?.pendingThumbnailRequest = nil
             self?.imageView?.image = image
         }
     }

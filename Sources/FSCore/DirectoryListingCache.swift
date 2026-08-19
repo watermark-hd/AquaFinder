@@ -9,10 +9,22 @@ import Foundation
 public enum DirectoryListingCache {
     private static var cache: [URL: [FileItem]] = [:]
 
+    /// FSCore doesn't depend on FSUIKit, so it can't call `IconCache`
+    /// directly — the app wires this up once at launch instead (see
+    /// AppDelegate) to warm `IconCache` for every folder as soon as it's
+    /// listed, well before Icon/List/Column view's own cell configuration
+    /// would otherwise hit a cold cache on the main thread. Left unset,
+    /// this is simply a no-op.
+    public static var onNewListing: (([FileItem]) -> Void)?
+
     public static func contents(of directoryURL: URL) -> [FileItem] {
-        if let cached = cache[directoryURL] { return cached }
+        if let cached = cache[directoryURL] {
+            onNewListing?(cached)
+            return cached
+        }
         let result = FileListing.contents(of: directoryURL)
         cache[directoryURL] = result
+        onNewListing?(result)
         return result
     }
 

@@ -9,6 +9,17 @@ import FSIconView
 import FSGetInfo
 
 public final class MainWindowController: NSWindowController {
+    // FSCore (DirectoryListingCache) doesn't depend on FSUIKit (IconCache),
+    // so it can't warm the icon cache itself — wired up here instead,
+    // since this is the first point in the dependency graph that imports
+    // both. A static stored property's initializer runs exactly once no
+    // matter how many windows get opened, which is all this needs: the
+    // hook itself is stateless.
+    private static let wireIconPrefetch: Void = {
+        DirectoryListingCache.onNewListing = { items in
+            IconCache.prefetch(items.map(\.url))
+        }
+    }()
     /// 初回起動時（自動保存されたフレーム/サイドバー幅がまだ無いとき）の
     /// デフォルトサイズ。環境設定の「ウィンドウサイズを既定に戻す」からも使う。
     private static let defaultWindowSize = NSSize(width: 1075, height: 700)
@@ -128,6 +139,7 @@ public final class MainWindowController: NSWindowController {
     }
 
     public init(rootURL: URL) {
+        _ = Self.wireIconPrefetch
         columnVC = ColumnBrowserViewController(rootURL: rootURL)
         listVC = ListViewController(rootURL: rootURL)
         iconVC = IconViewController(rootURL: rootURL)
@@ -1003,6 +1015,34 @@ public final class MainWindowController: NSWindowController {
             GetInfoWindowRegistry.shared.showMultiple(for: urls.map { FileItem(url: $0) })
         } else if let url = urls.first {
             showGetInfo(for: FileItem(url: url))
+        }
+    }
+
+    /// File ▸ Open (⌘O) — same "open" real Finder gives a selection
+    /// regardless of how it got selected, not just via double-click.
+    /// A single selected folder navigates the current window exactly like
+    /// double-clicking it does; with more than one item selected, each
+    /// folder opens in its own new window instead (real Finder does the
+    /// same — there's no single window that could show two folders'
+    /// contents at once), and regular files just open in their default
+    /// app either way.
+    @objc public func openSelection(_ sender: Any?) {
+        let urls = activeBrowser.selectedURLs
+        guard !urls.isEmpty else { return }
+        if urls.count == 1, let url = urls.first {
+            if FileItem(url: url).isBrowsable {
+                navigate(to: url, pushHistory: true)
+            } else {
+                NSWorkspace.shared.open(url)
+            }
+            return
+        }
+        for url in urls {
+            if FileItem(url: url).isBrowsable {
+                openInNewWindow(url)
+            } else {
+                NSWorkspace.shared.open(url)
+            }
         }
     }
 

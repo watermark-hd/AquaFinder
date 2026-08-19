@@ -10,6 +10,7 @@
 /* Fileメニュー */
 "New Window" = "新規ウインドウ";
 "New Folder" = "新規フォルダ";
+"Open" = "開く";
 "Get Info" = "情報を見る";
 "Quick Look" = "クイックルック";
 "Duplicate" = "複製";
