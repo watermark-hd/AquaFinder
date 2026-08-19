@@ -453,7 +453,15 @@ public final class MainWindowController: NSWindowController {
         window?.minSize = NSSize(width: minWidth, height: window?.minSize.height ?? 400)
     }
 
-    private static let searchIconMinWidth: CGFloat = 44
+    // The toolbar's own item spacing/padding around the search field
+    // isn't fully under this code's control (see updateFloatingToolbar-
+    // ButtonFrames below), so the assumed 12pt gap to viewModeControl
+    // doesn't hold exactly at the narrowest widths — measured on-screen,
+    // the magnifying glass icon started visibly overlapping "Column"
+    // once the search field's driven width dropped below ~70pt. 80
+    // leaves a safety margin above that rather than sitting right on
+    // the observed edge.
+    private static let searchIconMinWidth: CGFloat = 80
     private static let searchMaxWidth: CGFloat = 240
 
     /// Called once from setUpFloatingToolbarButtons and again from
@@ -499,11 +507,25 @@ public final class MainWindowController: NSWindowController {
         // on a native control: NSSearchField draws its placeholder text
         // at natural width regardless of how narrow the field itself
         // has been forced to, so a shrunk field still visibly spilled
-        // placeholder text out over viewModeControl. Clearing the
-        // placeholder once the field is too narrow to actually show it
-        // leaves only the (always-drawn) magnifying glass icon, which
-        // is what was actually asked for.
-        searchField.placeholderString = searchWidth < 80 ? nil : Self.searchPlaceholder
+        // placeholder text out over viewModeControl. A fixed 80pt
+        // threshold was too small to actually fit the full placeholder
+        // string (longer in Japanese than English), so the text still
+        // got clipped mid-word before this cutoff kicked in. Measuring
+        // the placeholder's actual drawn width and clearing it as soon
+        // as the field can't fit it in full — even by one point — keeps
+        // the field showing either the complete string or just the
+        // (always-drawn) magnifying glass icon, never a partial word.
+        let placeholderFont = searchField.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        let placeholderTextWidth = (Self.searchPlaceholder as NSString)
+            .size(withAttributes: [.font: placeholderFont]).width
+        let placeholderMinWidth = Self.searchIconMinWidth + placeholderTextWidth + 6
+        // NSSearchField falls back to AppKit's own built-in "Search"
+        // placeholder whenever placeholderString is nil — clearing it
+        // that way doesn't actually leave the field blank, it just
+        // swaps our string for Apple's shorter default one, which is
+        // exactly the partial-text-visible symptom this code exists to
+        // prevent. An empty string suppresses that fallback for real.
+        searchField.placeholderString = searchWidth < placeholderMinWidth ? "" : Self.searchPlaceholder
 
         var viewModeFrame = viewModeControl.frame
         viewModeFrame.origin = NSPoint(
