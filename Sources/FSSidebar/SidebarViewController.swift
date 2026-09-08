@@ -310,9 +310,23 @@ extension SidebarViewController: NSOutlineViewDelegate {
         }
         cell.imageSizeConstraints.forEach { $0.constant = textSize.rowIconSize }
         cell.textField?.font = NSFont.systemFont(ofSize: textSize.baseFontSize)
-        cell.textField?.stringValue = fileItem.name
+        cell.textField?.stringValue = displayName(for: fileItem)
         cell.imageView?.image = IconCache.icon(for: fileItem.url)
         return cell
+    }
+
+    /// SHARED配下の項目は、共有元のホスト名/IPを名前に添える。
+    /// 他のMacをApple ID共有で繋いだ場合、共有されたフォルダの名前が
+    /// たまたまローカルの「書類」「ダウンロード」等(PLACES)と同じに
+    /// なることがあり、サイドバー上で見分けが付かなくなるため。
+    private func displayName(for fileItem: FileItem) -> String {
+        guard let sharedSection = sections.first(where: { $0.kind == .shared }),
+              sharedSection.items.contains(where: { $0.url == fileItem.url }),
+              let host = VolumeInfo.remoteHost(for: fileItem.url)
+        else {
+            return fileItem.name
+        }
+        return "\(fileItem.name) (\(host))"
     }
 }
 
