@@ -149,13 +149,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, AppWindowOpening {
         addItem(
             // 当初⌘⌥↑（矢印キーのfunction key文字＋Option）を割り当てたが、
             // 実機で押下しても発火しなかった（メニューをクリックすれば
-            // 動く一方でショートカットキーだけ反応しない）。Goメニュー
-            // 「上の階層に移動」がプレーンな⌘↑を使っており、function key
-            // 文字の等価物にOptionを重ねる組み合わせはAppKit側で確実に
-            // 拾ってもらえないらしい。素直な文字キー(U = "Up")に変更。
+            // 動く一方でショートカットキーだけ反応しない）。⌘⌥Uに変えて
+            // 一旦解決したが、Optionキーに慣れていない人には覚えにくいと
+            // 指摘を受け、プレーンな⌘U（U = "Up"）に単純化した。
             NSLocalizedString("Move to Enclosing Folder", comment: "Fileメニュー: 上の階層に移動"),
             action: #selector(MainWindowController.moveSelectionToEnclosingFolder(_:)),
-            keyEquivalent: "u", modifiers: [.command, .option]
+            keyEquivalent: "u"
         )
         menu.addItem(.separator())
         addItem(
