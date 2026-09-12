@@ -993,6 +993,40 @@ public final class MainWindowController: NSWindowController {
         refreshAllViews()
     }
 
+    /// Moves the selection up one level, to the parent of whichever
+    /// folder they're currently sitting in — `activeBrowser.currentDirectoryURL`
+    /// rather than `currentRootURL`, since Column view's selection can be
+    /// several columns deeper than the window's own root. Added so moving
+    /// a deeply-nested file to an ancestor folder doesn't require
+    /// navigating there first and dragging — a real inconvenience the
+    /// user ran into repeatedly, without needing a second pane the way
+    /// Path Finder-style dual-pane browsers solve the same problem.
+    @objc public func moveSelectionToEnclosingFolder(_ sender: Any?) {
+        let sourceDirectory = activeBrowser.currentDirectoryURL
+        let destination = sourceDirectory.deletingLastPathComponent()
+        guard destination.path != sourceDirectory.path else { return }
+        for url in activeBrowser.selectedURLs {
+            do {
+                _ = try FileOperations.move(url, into: destination)
+                let movedURL = destination.appendingPathComponent(url.lastPathComponent)
+                registerUndo(
+                    actionName: NSLocalizedString("Move to Enclosing Folder", comment: "取り消し操作名: 上の階層に移動"),
+                    undo: { [weak self] in
+                        _ = try? FileOperations.move(movedURL, into: sourceDirectory)
+                        self?.refreshAllViews()
+                    },
+                    redo: { [weak self] in
+                        _ = try? FileOperations.move(url, into: destination)
+                        self?.refreshAllViews()
+                    }
+                )
+            } catch {
+                showFileOperationError(error)
+            }
+        }
+        refreshAllViews()
+    }
+
     @objc public func emptyTrash(_ sender: Any?) {
         guard let window else { return }
         let alert = NSAlert()

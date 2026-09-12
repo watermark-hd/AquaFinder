@@ -147,6 +147,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, AppWindowOpening {
         )
         menu.addItem(.separator())
         addItem(
+            // ⌘↑（矢印キー本来のfunction key文字）はGoメニューの
+            // 「上の階層に移動（ナビゲーション）」で既に使っているため、
+            // ⌘⌥↑で衝突を避ける。
+            NSLocalizedString("Move to Enclosing Folder", comment: "Fileメニュー: 上の階層に移動"),
+            action: #selector(MainWindowController.moveSelectionToEnclosingFolder(_:)),
+            keyEquivalent: String(UnicodeScalar(NSUpArrowFunctionKey)!), modifiers: [.command, .option]
+        )
+        menu.addItem(.separator())
+        addItem(
             NSLocalizedString("Move to Trash", comment: "Fileメニュー: ゴミ箱に入れる"),
             action: #selector(MainWindowController.moveSelectionToTrash(_:)), keyEquivalent: "\u{8}"
         )

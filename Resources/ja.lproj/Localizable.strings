@@ -16,6 +16,7 @@
 "Duplicate" = "複製";
 "Compress “%@”" = "「%@」を圧縮";
 "Rename" = "名称変更";
+"Move to Enclosing Folder" = "上の階層に移動";
 "Move to Trash" = "ゴミ箱に入れる";
 "Empty Trash" = "ゴミ箱を空にする";
 "Close Window" = "ウインドウを閉じる";
