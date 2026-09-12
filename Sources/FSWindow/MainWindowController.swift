@@ -662,8 +662,11 @@ public final class MainWindowController: NSWindowController {
     }
 
     private func updateStatusBar() {
-        let count = DirectoryListingCache.contents(of: currentRootURL).count
-        statusBarView.update(itemCount: count, directoryURL: currentRootURL)
+        let requestedRoot = currentRootURL
+        DirectoryListingCache.contents(of: currentRootURL) { [weak self] items in
+            guard let self, self.currentRootURL == requestedRoot else { return }
+            self.statusBarView.update(itemCount: items.count, directoryURL: requestedRoot)
+        }
     }
 
     /// 環境設定（テーマ／文字サイズ）を読み直し、ウィンドウ本体と全ての

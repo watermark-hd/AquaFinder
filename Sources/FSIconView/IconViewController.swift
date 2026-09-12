@@ -105,9 +105,22 @@ public final class IconViewController: NSViewController {
     }
 
     private func reload() {
-        let unsorted = searchResults ?? DirectoryListingCache.contents(of: rootURL)
-        items = FileSorting.sorted(unsorted, by: sortField)
-        collectionView.reloadData()
+        if let searchResults {
+            items = FileSorting.sorted(searchResults, by: sortField)
+            collectionView.reloadData()
+            return
+        }
+        // NSCollectionView's own data source calls are synchronous, but
+        // nothing requires *this* method to answer them before the
+        // listing is ready — collectionView.reloadData() only happens
+        // once `items` is actually populated, so those calls just read
+        // an already-resolved array instead of blocking on disk I/O.
+        let requestedRoot = rootURL
+        DirectoryListingCache.contents(of: rootURL) { [weak self] unsorted in
+            guard let self, self.rootURL == requestedRoot, self.searchResults == nil else { return }
+            self.items = FileSorting.sorted(unsorted, by: self.sortField)
+            self.collectionView.reloadData()
+        }
     }
 
     /// Set from the View menu's "Arrange By" — Icon view has no column

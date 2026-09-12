@@ -19,10 +19,23 @@ CONFIG=release
 OUT_DIR=.build/universal
 OUT_BIN="$OUT_DIR/$TARGET"
 
+# CLT 27.0's x86_64 Swift runtime compatibility libraries
+# (libswiftCompatibility56.a, libswiftCompatibilityPacks.a) only ship
+# arm64/arm64e slices — no x86_64 at all, on this toolchain. Any x86_64
+# link fails with "Undefined symbols ... __swift_FORCE_LOAD_
+# $_swiftCompatibility56" as a result, unrelated to anything in this
+# package. -runtime-compatibility-version none tells swiftc not to
+# auto-link those back-deployment shims at all, which sidesteps the
+# missing-slice problem entirely. The tradeoff is losing a handful of
+# very old Swift-runtime bug-fix backports that only mattered on OS
+# versions older than this app already requires, so it's a safe trade
+# here — confirmed the resulting x86_64 slice still builds and runs.
+RUNTIME_COMPAT_FLAGS="-Xswiftc -runtime-compatibility-version -Xswiftc none"
+
 mkdir -p "$OUT_DIR"
 
 echo "==> Trying SwiftPM native multi-arch build..."
-if swift build -c "$CONFIG" --arch arm64 --arch x86_64 --product "$TARGET" 2>/tmp/aquafinder-multiarch-build.log; then
+if swift build -c "$CONFIG" --arch arm64 --arch x86_64 --product "$TARGET" $RUNTIME_COMPAT_FLAGS 2>/tmp/aquafinder-multiarch-build.log; then
     MERGED_BIN=".build/apple/Products/$CONFIG/$TARGET"
     if [ -f "$MERGED_BIN" ] && lipo -info "$MERGED_BIN" 2>/dev/null | grep -q "x86_64" && lipo -info "$MERGED_BIN" | grep -q "arm64"; then
         echo "==> Multi-arch build succeeded: $MERGED_BIN"
@@ -38,11 +51,11 @@ else
 fi
 
 echo "==> Building arm64 slice..."
-swift build -c "$CONFIG" --arch arm64 --product "$TARGET"
+swift build -c "$CONFIG" --arch arm64 --product "$TARGET" $RUNTIME_COMPAT_FLAGS
 ARM64_BIN=".build/arm64-apple-macosx/$CONFIG/$TARGET"
 
 echo "==> Building x86_64 slice..."
-swift build -c "$CONFIG" --arch x86_64 --product "$TARGET"
+swift build -c "$CONFIG" --arch x86_64 --product "$TARGET" $RUNTIME_COMPAT_FLAGS
 X86_64_BIN=".build/x86_64-apple-macosx/$CONFIG/$TARGET"
 
 if [ ! -f "$ARM64_BIN" ] || [ ! -f "$X86_64_BIN" ]; then

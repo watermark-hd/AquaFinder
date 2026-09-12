@@ -38,6 +38,11 @@ public final class ListViewController: NSViewController {
     /// Column view have their own equivalent; see MainWindowController).
     private var searchResults: [FileItem]?
 
+    /// `rootURL`'s own (top-level) children, loaded asynchronously by
+    /// `loadRootItems()` — see its doc comment for why this exists
+    /// separately from `children(of:)` below, which is still synchronous.
+    private var rootItems: [FileItem] = []
+
     private let dragModifierTracker = DragModifierTracker()
     private let springLoadTimer = SpringLoadTimer()
 
@@ -79,7 +84,7 @@ public final class ListViewController: NSViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         setUpOutlineView()
-        outlineView.reloadData()
+        loadRootItems()
         springLoadTimer.onActivate = { [weak self] url in
             self?.onOpen?(url)
         }
@@ -88,7 +93,27 @@ public final class ListViewController: NSViewController {
     public func setRoot(_ url: URL) {
         rootURL = url
         resetFolderSizes()
-        outlineView.reloadData()
+        loadRootItems()
+    }
+
+    /// Loads `rootURL`'s own children asynchronously into `rootItems`,
+    /// then reloads the outline view. NSOutlineView's data source methods
+    /// (`numberOfChildrenOfItem`/`child:ofItem:`) are synchronous and have
+    /// no async form — expanding an already-visible subfolder row still
+    /// has to answer them on the spot, via the unavoidably-synchronous
+    /// `children(of:)` below. But the *root* level only ever gets read
+    /// right after `reloadData()` is told to re-query it, so deferring
+    /// that call until the listing has actually arrived — rather than
+    /// fetching inside the data source callback itself — keeps navigating
+    /// into a new folder from blocking the main thread on disk I/O, same
+    /// as Icon view.
+    private func loadRootItems() {
+        let requestedRoot = rootURL
+        DirectoryListingCache.contents(of: rootURL) { [weak self] unsorted in
+            guard let self, self.rootURL == requestedRoot else { return }
+            self.rootItems = self.sorted(unsorted)
+            self.outlineView.reloadData()
+        }
     }
 
     public func applyTextSize(_ textSize: TextSize) {
@@ -249,7 +274,12 @@ extension ListViewController: SelectionProviding {
 
     public func refresh() {
         resetFolderSizes()
-        outlineView.reloadData()
+        if searchResults != nil {
+            // 検索結果は既にメモリ上にある配列なので、再取得の必要はない。
+            outlineView.reloadData()
+        } else {
+            loadRootItems()
+        }
     }
 
     public func beginRename() {
@@ -314,10 +344,11 @@ extension ListViewController: NSMenuDelegate {
 
 extension ListViewController: NSOutlineViewDataSource {
     public func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        if item == nil, let searchResults { return searchResults.count }
-        if let fileItem = item as? FileItem, !fileItem.isBrowsable { return 0 }
-        let url = (item as? FileItem)?.url ?? rootURL
-        return children(of: url).count
+        if item == nil {
+            return searchResults?.count ?? rootItems.count
+        }
+        guard let fileItem = item as? FileItem, fileItem.isBrowsable else { return 0 }
+        return children(of: fileItem.url).count
     }
 
     public func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
@@ -326,9 +357,14 @@ extension ListViewController: NSOutlineViewDataSource {
     }
 
     public func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        if item == nil, let searchResults { return sorted(searchResults)[index] }
-        let url = (item as? FileItem)?.url ?? rootURL
-        return children(of: url)[index]
+        if item == nil {
+            if let searchResults { return sorted(searchResults)[index] }
+            return rootItems[index]
+        }
+        guard let fileItem = item as? FileItem else {
+            preconditionFailure("unexpected list item")
+        }
+        return children(of: fileItem.url)[index]
     }
 
     public func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
@@ -393,6 +429,11 @@ extension ListViewController: NSOutlineViewDelegate, NSTextFieldDelegate {
         else { return }
         sortKey = newSortKey
         sortAscending = descriptor.ascending
+        // rootItemsは既にメモリ上にあるので、ディスクへは行かず並べ替える
+        // だけでよい。展開済みのサブフォルダ側(children(of:))は次に
+        // 問い合わせが来たタイミングで新しいsortKeyを使って自然に
+        // 並び替わる。
+        rootItems = sorted(rootItems)
         outlineView.reloadData()
     }
 

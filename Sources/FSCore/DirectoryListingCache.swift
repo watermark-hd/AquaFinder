@@ -28,6 +28,42 @@ public enum DirectoryListingCache {
         return result
     }
 
+    /// Same as `contents(of:)`, but does the actual disk enumeration
+    /// (`FileListing.contents(of:)`) on a background queue instead of
+    /// blocking the caller — the synchronous version above still exists
+    /// because `ColumnBrowserViewController`'s `NSBrowser` and
+    /// `ListViewController`'s expanded-subfolder rows are both driven by
+    /// `NSOutlineView`/`NSBrowser` data source methods that must return a
+    /// value immediately and have no async equivalent. Icon/List view's
+    /// own *root*-level listing and the status bar's item count don't have
+    /// that constraint, so they use this instead.
+    ///
+    /// A cache hit still calls `completion` synchronously, on the calling
+    /// thread — re-visiting an already-listed folder should feel exactly
+    /// as instant as it did before, not gain an artificial round trip
+    /// through the background queue.
+    public static func contents(of directoryURL: URL, completion: @escaping ([FileItem]) -> Void) {
+        if let cached = cache[directoryURL] {
+            onNewListing?(cached)
+            completion(cached)
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = FileListing.contents(of: directoryURL)
+            DispatchQueue.main.async {
+                // Another caller may have already listed (and cached) the
+                // same directory while this background listing was still
+                // running — prefer whatever's already cached so concurrent
+                // callers converge on one shared value instead of each
+                // silently overwriting the other's.
+                let resolved = cache[directoryURL] ?? result
+                cache[directoryURL] = resolved
+                onNewListing?(resolved)
+                completion(resolved)
+            }
+        }
+    }
+
     public static func invalidate(_ directoryURL: URL) {
         cache.removeValue(forKey: directoryURL)
     }
