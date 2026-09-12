@@ -588,6 +588,17 @@ public final class MainWindowController: NSWindowController {
             }
         }
         currentRootURL = url
+        // DirectoryWatcher only ever watches the single folder currently
+        // being shown (see its own doc comment) — a folder change made
+        // while the user was browsing elsewhere (e.g. a file dropped onto
+        // Desktop from outside AquaFinder while some other folder was on
+        // screen) never gets a kqueue event, so the cache entry for that
+        // folder can go stale without anything to invalidate it before
+        // navigating back. Forcing a fresh read on every navigation costs
+        // nothing now that listing runs off the main thread (see
+        // DirectoryListingCache's async overload) — a cache hit was only
+        // ever an optimization, not something correctness depended on.
+        DirectoryListingCache.invalidate(url)
         columnVC.setRoot(url)
         listVC.setRoot(url)
         iconVC.setRoot(url)
