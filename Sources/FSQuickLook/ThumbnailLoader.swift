@@ -24,7 +24,19 @@ public enum ThumbnailLoader {
         )
         QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, error in
             guard let representation, error == nil else { return }
-            let image = NSImage(cgImage: representation.cgImage, size: size)
+            // QLThumbnailGenerator fits the source into `size` preserving
+            // its own aspect ratio — a landscape photo comes back as a
+            // wide-but-short CGImage, not a square one. Declaring the
+            // NSImage's size as the (square) requested `size` regardless
+            // of the CGImage's real pixel dimensions told NSImageView
+            // the image itself WAS square, so `.scaleProportionallyUpOrDown`
+            // stretched a landscape photo to fill a square cell instead of
+            // letterboxing it. Using the CGImage's actual pixel size
+            // (divided by `scale` back to points) keeps the real aspect
+            // ratio intact.
+            let cgImage = representation.cgImage
+            let imageSize = CGSize(width: CGFloat(cgImage.width) / scale, height: CGFloat(cgImage.height) / scale)
+            let image = NSImage(cgImage: cgImage, size: imageSize)
             DispatchQueue.main.async {
                 cache[url] = image
                 completion(image)

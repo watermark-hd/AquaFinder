@@ -47,14 +47,20 @@ public final class ColumnBrowserViewController: NSViewController {
         reloadAllColumns()
     }
 
-    /// Matches List/Sidebar/Icon view's own `applyTextSize` — Column view
-    /// used to be the one place in the app that never read this
-    /// preference at all, leaving its icons stuck at whatever native size
-    /// `NSWorkspace.icon(forFile:)` happens to hand back. On a browser's
-    /// tight row height that native size overflows the row and bleeds
-    /// into the row above/below it.
+    /// Matches List/Sidebar/Icon view's own `applyTextSize`. This used to
+    /// only resize the icon (to a conservatively small `columnRowIconSize`,
+    /// chosen just to fit AppKit's fixed default `NSBrowser.rowHeight`
+    /// without overflowing it) and never touched the cell's font at all —
+    /// so raising the text-size preference did nothing visible here: the
+    /// label stayed at NSBrowserCell's built-in default font, and even the
+    /// icon barely grew. Now the row height itself scales with the
+    /// preference too (matching List view's `listRowHeight`), which is
+    /// what actually leaves room for a real font-size and full-size icon
+    /// change to show.
     public func applyTextSize(_ textSize: TextSize) {
-        FileBrowserCell.iconSize = textSize.columnRowIconSize
+        FileBrowserCell.iconSize = textSize.rowIconSize
+        FileBrowserCell.font = NSFont.systemFont(ofSize: textSize.baseFontSize)
+        browser.rowHeight = textSize.listRowHeight
         reloadAllColumns()
     }
 
@@ -273,7 +279,10 @@ final class FileBrowserCell: NSBrowserCell {
     /// all cells can read it from. Fine in practice since text size is a
     /// single app-wide preference already (AppearancePreferenceStore),
     /// not something that varies per window.
-    static var iconSize: CGFloat = AppearancePreferenceStore.textSize.columnRowIconSize
+    static var iconSize: CGFloat = AppearancePreferenceStore.textSize.rowIconSize
+    /// Same story as `iconSize` above — NSBrowserCell's own default font
+    /// never moved with the text-size preference until this was added.
+    static var font: NSFont = NSFont.systemFont(ofSize: AppearancePreferenceStore.textSize.baseFontSize)
 
     override var objectValue: Any? {
         get { super.objectValue }
@@ -282,6 +291,7 @@ final class FileBrowserCell: NSBrowserCell {
                 super.objectValue = newValue
                 return
             }
+            font = Self.font
             // IconCache hands back a shared instance reused by every other
             // view; resizing it in place would shrink it everywhere else
             // too. NSBrowserCell also draws `image` at its own reported
@@ -346,6 +356,18 @@ extension ColumnBrowserViewController: SelectionProviding {
     public var currentDirectoryURL: URL {
         guard let selected = lastSelectedItem else { return currentRoot.url }
         return selected.isBrowsable ? selected.url : selected.url.deletingLastPathComponent()
+    }
+
+    /// `currentDirectoryURL`'s children in the exact order this view is
+    /// currently showing them (per Column view's own `sortField`, set via
+    /// the View menu's "Arrange By") — used by Quick Look's prev/next
+    /// stepping so it walks the same order the visible column does,
+    /// instead of a hardcoded name-ascending order from a different root.
+    public var currentSortedItems: [FileItem] {
+        if let searchResults, currentDirectoryURL == currentRoot.url {
+            return FileSorting.sorted(searchResults, by: sortField)
+        }
+        return children(of: currentDirectoryURL)
     }
 
     public func refresh() {

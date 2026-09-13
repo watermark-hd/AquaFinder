@@ -270,6 +270,15 @@ extension IconViewController: SelectionProviding {
     /// view — no per-column ambiguity the way Column view has.
     public var currentDirectoryURL: URL { rootURL }
 
+    /// `rootURL`'s children in the exact order this view is currently
+    /// showing them (per the View menu's "Arrange By" field) — lets
+    /// MainWindowController have Quick Look's prev/next stepping walk
+    /// the same order the user actually sees instead of a fixed
+    /// name-ascending order, without needing to re-derive the sort here
+    /// (this already accounts for things like the folder-size cache used
+    /// when sorting by size, which MainWindowController has no access to).
+    public var currentSortedItems: [FileItem] { items }
+
     public func refresh() {
         reload()
     }

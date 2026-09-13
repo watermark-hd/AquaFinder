@@ -1,4 +1,5 @@
 import Foundation
+import FSCore
 
 /// Shared surface the three browsing view controllers (Column/List/Icon)
 /// expose so MainWindowController's File-menu commands (New Folder,
@@ -11,6 +12,14 @@ public protocol SelectionProviding: AnyObject {
     /// created in — see each conformer's own doc comment for how it's
     /// derived from the current selection/root.
     var currentDirectoryURL: URL { get }
+
+    /// `currentDirectoryURL`'s children in the exact order this view is
+    /// currently displaying them — each conformer has its own independent
+    /// sort state (List view's clickable column headers, Icon/Column
+    /// view's shared "Arrange By" field), so Quick Look's prev/next
+    /// stepping reads this instead of re-deriving a possibly-different
+    /// order from a shared cache.
+    var currentSortedItems: [FileItem] { get }
 
     func refresh()
 

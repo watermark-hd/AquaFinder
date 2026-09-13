@@ -787,7 +787,16 @@ public final class MainWindowController: NSWindowController {
     /// whichever one was selected, rather than being limited to a
     /// single-item selection with nothing to page to.
     private func quickLookItems() -> [FileItem] {
-        DirectoryListingCache.contents(of: currentRootURL)
+        // Used to always read `currentRootURL` in a fixed name-ascending
+        // order from the shared cache, regardless of which view was
+        // active or how it was actually sorted — Column view's real
+        // "current folder" can be a deeper folder than the window's root,
+        // and List/Icon view's own sort (e.g. by date, or reversed) could
+        // differ from the cache's order, so stepping with the arrow keys
+        // could land on the visually-wrong neighboring file. Reading
+        // straight from the active view's own current directory and sort
+        // order keeps Quick Look's paging in sync with what's on screen.
+        activeBrowser.currentSortedItems
     }
 
     private func selectCurrentQuickLookIndex(in panel: QLPreviewPanel) {

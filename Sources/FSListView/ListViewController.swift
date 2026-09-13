@@ -272,6 +272,15 @@ extension ListViewController: SelectionProviding {
     /// belong in — it's always the folder currently being browsed.
     public var currentDirectoryURL: URL { rootURL }
 
+    /// `rootURL`'s children in the exact order this view is currently
+    /// showing them — List view has its own independent sort (clickable
+    /// column headers: sortKey/sortAscending), separate from the
+    /// "Arrange By" field Icon/Column view share, so MainWindowController
+    /// can't reconstruct this order itself. Used so Quick Look's
+    /// prev/next stepping walks the same order the user actually sees
+    /// instead of always a fixed name-ascending order.
+    public var currentSortedItems: [FileItem] { rootItems }
+
     public func refresh() {
         resetFolderSizes()
         if searchResults != nil {
