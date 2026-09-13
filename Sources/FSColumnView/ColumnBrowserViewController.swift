@@ -60,6 +60,18 @@ public final class ColumnBrowserViewController: NSViewController {
     public func applyTextSize(_ textSize: TextSize) {
         FileBrowserCell.iconSize = textSize.rowIconSize
         FileBrowserCell.font = NSFont.systemFont(ofSize: textSize.baseFontSize)
+        // `browser.rowHeight =` throws "setRowHeight: is not supported for
+        // browsers with matrix delegates" on a browser whose `viewDidLoad`
+        // (and so `browser.delegate = self`) has never run — exactly the
+        // state Column View sits in whenever it isn't the active view mode
+        // at launch. That's an uncaught Objective-C exception, so this
+        // used to take the whole app down the moment this method ran
+        // during ordinary startup (applyAppearancePreferences() calls this
+        // unconditionally) with Icon or List as the last-used view — see
+        // the identical fix (and its longer doc comment) in `setRoot(_:)`.
+        if !isViewLoaded {
+            _ = view
+        }
         browser.rowHeight = textSize.listRowHeight
         reloadAllColumns()
     }
