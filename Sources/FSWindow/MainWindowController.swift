@@ -1316,7 +1316,13 @@ private final class ClassicSegmentedControl: NSView {
     private static let shadowColor = NSColor(srgbRed: 0.25, green: 0.25, blue: 0.25, alpha: 0.85)
     // A hair off pure white reads as more "retro" than a flat white fill.
     private static let fillColor = NSColor(srgbRed: 0.9, green: 0.9, blue: 0.9, alpha: 1.0)
-    private static let selectedFillColor = NSColor(srgbRed: 0.72, green: 0.72, blue: 0.72, alpha: 1.0)
+    // Was 0.72 — only an 0.18 gap from fillColor's 0.9, which read as
+    // barely-there next to a real Snow Leopard screenshot (the selected
+    // segment there is unmistakably darker/pressed-looking). Widened the
+    // gap substantially so the selected state is obvious at a glance
+    // without needing to add any new chrome.
+    private static let selectedFillColor = NSColor(srgbRed: 0.45, green: 0.45, blue: 0.45, alpha: 1.0)
+    private static let selectedInnerShadowColor = NSColor(srgbRed: 0.3, green: 0.3, blue: 0.3, alpha: 1.0)
     private static let dividerColor = NSColor(srgbRed: 0.72, green: 0.72, blue: 0.72, alpha: 1.0)
     private static let textColor = NSColor(srgbRed: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)
     private static let disabledTextColor = NSColor(srgbRed: 0.1, green: 0.1, blue: 0.1, alpha: 0.35)
@@ -1411,6 +1417,13 @@ private final class ClassicSegmentedControl: NSView {
             if tracking == .selectOne, selectedSegment == i {
                 Self.selectedFillColor.setFill()
                 segmentRect.fill()
+                // A flat fill alone still read as closer to "slightly
+                // shaded" than "pressed in" — a thin darker line right
+                // at the top inner edge reads as a real inset bevel
+                // without needing a full gradient.
+                let insetLine = NSRect(x: segmentRect.minX, y: segmentRect.maxY - 1.5, width: segmentRect.width, height: 1.5)
+                Self.selectedInnerShadowColor.setFill()
+                insetLine.fill()
             } else if pressedIndex == i {
                 Self.selectedFillColor.withAlphaComponent(0.5).setFill()
                 segmentRect.fill()
