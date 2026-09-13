@@ -25,6 +25,22 @@ public final class MainWindowController: NSWindowController {
     private static let defaultWindowSize = NSSize(width: 1075, height: 700)
     private static let defaultSidebarWidth: CGFloat = 150
     private static let windowFrameDefaultsKey = "AquaFinderMainWindowFrame"
+
+    /// A saved/computed frame can end up mostly or entirely off every
+    /// screen — an external display that's since been disconnected, or
+    /// (the case that actually bit a user) `resetToDefaultLayout()`
+    /// recentering around the window's old center point while shrinking
+    /// it to the default size, which can walk the origin negative when
+    /// the window was sitting near the left edge. A loose overlap check
+    /// (e.g. "some N points of width are visible somewhere") still passes
+    /// for a frame whose origin has drifted deep into negative x — most of
+    /// a wide window can still show on screen while the sidebar, which
+    /// lives along the window's left edge, sits entirely off it. Requiring
+    /// the whole frame to fit within some screen's visible area is what
+    /// actually guarantees the sidebar is reachable.
+    private static func isReasonablyOnScreen(_ frame: NSRect) -> Bool {
+        NSScreen.screens.contains { $0.visibleFrame.contains(frame) }
+    }
     // Captured in init from the just-restored (or default) frame, and
     // re-applied once more in showWindow(_:) — see the doc comment there
     // for why a single re-assertion partway through init isn't enough.
@@ -179,7 +195,8 @@ public final class MainWindowController: NSWindowController {
         // undocumented interference entirely.
         if let savedFrameString = UserDefaults.standard.string(forKey: Self.windowFrameDefaultsKey) {
             let savedFrame = NSRectFromString(savedFrameString)
-            if savedFrame.width >= window.minSize.width, savedFrame.height >= window.minSize.height {
+            if savedFrame.width >= window.minSize.width, savedFrame.height >= window.minSize.height,
+               Self.isReasonablyOnScreen(savedFrame) {
                 window.setFrame(savedFrame, display: false)
             } else {
                 window.setContentSize(Self.defaultWindowSize)
@@ -718,7 +735,16 @@ public final class MainWindowController: NSWindowController {
             // window.frame (and the frame the windowDidResize-triggered
             // autosave below captures) wouldn't reliably reflect the
             // final, fully-settled size at the moment this method returns.
-            window.setFrame(frame, display: true, animate: false)
+            if Self.isReasonablyOnScreen(frame) {
+                window.setFrame(frame, display: true, animate: false)
+            } else {
+                // Recentering around the window's old center point can
+                // walk the origin off-screen when the window was sitting
+                // near an edge and shrinks — fall back to a real on-screen
+                // center rather than saving a frame nobody can see.
+                window.setContentSize(newSize)
+                window.center()
+            }
         }
         splitView?.setPosition(Self.defaultSidebarWidth, ofDividerAt: 0)
     }
