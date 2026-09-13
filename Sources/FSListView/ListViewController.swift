@@ -485,7 +485,16 @@ extension ListViewController: NSOutlineViewDelegate, NSTextFieldDelegate {
         switch column.rawValue {
         case "Name":
             cell.textField?.stringValue = fileItem.name
-            cell.imageView?.image = IconCache.icon(for: fileItem.url)
+            let requestedURL = fileItem.url
+            (cell as? ListNameCell)?.requestedIconURL = requestedURL
+            // 非同期版。遅いネットワーク共有(NAS)でLaunch Servicesの
+            // 問い合わせがメインスレッドを固めないようにするため —
+            // キャッシュ済みなら結局その場で(同期的に)反映されるので
+            // 通常時の体感は変わらない。
+            IconCache.icon(for: requestedURL) { [weak cell] image in
+                guard let nameCell = cell as? ListNameCell, nameCell.requestedIconURL == requestedURL else { return }
+                nameCell.imageView?.image = image
+            }
             if let labelDot = cell.viewWithTag(Self.labelDotTag) as? NSImageView {
                 let color = fileItem.labelColor
                 labelDot.isHidden = color == .none
@@ -545,6 +554,11 @@ extension ListViewController: NSOutlineViewDelegate, NSTextFieldDelegate {
 /// 変えられるよう、幅・高さの制約を使い回せる形で保持しておく。
 private final class ListNameCell: NSTableCellView {
     let imageSizeConstraints: [NSLayoutConstraint]
+    // NSTableView reuses cells without any reuse-callback the way
+    // NSCollectionView's prepareForReuse does — this is what a delayed
+    // IconCache.icon(for:completion:) callback checks against to avoid
+    // painting a since-recycled cell with an icon for the wrong file.
+    var requestedIconURL: URL?
 
     override init(frame frameRect: NSRect) {
         let textField = NSTextField(labelWithString: "")

@@ -15,6 +15,11 @@ import AppKit
 /// safe under that kind of concurrent access.
 public enum IconCache {
     private static let cache = NSCache<NSString, NSImage>()
+    // A generic icon lookup by UTI (not tied to any one file) is a cheap,
+    // local operation — unlike icon(forFile:), it never has to touch the
+    // filesystem the file itself lives on, so it stays fast even when
+    // that's a slow network mount. Used as the instant placeholder below.
+    private static let genericIcon = NSWorkspace.shared.icon(forFileType: "public.data")
 
     public static func icon(for url: URL) -> NSImage {
         let key = url.path as NSString
@@ -24,6 +29,32 @@ public enum IconCache {
         let icon = NSWorkspace.shared.icon(forFile: url.path)
         cache.setObject(icon, forKey: key)
         return icon
+    }
+
+    /// Same lookup, but never blocks the caller on a slow volume (a NAS
+    /// mount over a weak network link, for instance) — `icon(for:)`'s
+    /// direct `NSWorkspace.icon(forFile:)` call does real I/O against
+    /// wherever the file actually lives, so a slow mount means a slow,
+    /// main-thread-blocking call. `completion` fires synchronously with
+    /// a generic placeholder first if nothing's cached yet (or just once,
+    /// synchronously, with the real icon if it's already cached), then
+    /// again on the main thread with the real icon once the (backgrounded)
+    /// lookup finishes — the same "placeholder, then upgrade" shape
+    /// `ThumbnailLoader` already uses for real content thumbnails.
+    public static func icon(for url: URL, completion: @escaping (NSImage) -> Void) {
+        let key = url.path as NSString
+        if let cached = cache.object(forKey: key) {
+            completion(cached)
+            return
+        }
+        completion(genericIcon)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let icon = NSWorkspace.shared.icon(forFile: url.path)
+            DispatchQueue.main.async {
+                cache.setObject(icon, forKey: key)
+                completion(icon)
+            }
+        }
     }
 
     /// Warms the cache for a batch of URLs off the main thread. Wired up

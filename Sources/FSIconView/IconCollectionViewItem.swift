@@ -119,7 +119,6 @@ final class IconCollectionViewItem: NSCollectionViewItem {
         self.fileItem = fileItem
         imageWidthConstraint.constant = textSize.gridIconSize
         imageHeightConstraint.constant = textSize.gridIconSize
-        imageView?.image = IconCache.icon(for: fileItem.url)
         textField?.font = NSFont.systemFont(ofSize: textSize.baseFontSize)
         textField?.stringValue = fileItem.name
         textField?.isEditable = false
@@ -129,6 +128,14 @@ final class IconCollectionViewItem: NSCollectionViewItem {
         labelDot.image = color == .none ? nil : LabelSwatchImage.make(for: color, diameter: 9)
 
         let requestedURL = fileItem.url
+        // 非同期版：キャッシュ済みなら同期的に即反映されるので体感は
+        // 変わらない。未キャッシュの場合だけ、まず汎用アイコンを即座に
+        // 出しつつ裏でLaunch Servicesへ問い合わせる — 遅いネットワーク
+        // 共有(NAS)でメインスレッドが固まるのを防ぐため。
+        IconCache.icon(for: requestedURL) { [weak self] image in
+            guard self?.fileItem?.url == requestedURL else { return }
+            self?.imageView?.image = image
+        }
         let iconSize = textSize.gridIconSize
         pendingThumbnailRequest = ThumbnailLoader.thumbnail(for: requestedURL, size: CGSize(width: iconSize, height: iconSize), scale: 2) { [weak self] image in
             // The cell may have been recycled for a different item by the
