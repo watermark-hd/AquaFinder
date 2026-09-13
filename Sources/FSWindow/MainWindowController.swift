@@ -1316,13 +1316,11 @@ private final class ClassicSegmentedControl: NSView {
     private static let shadowColor = NSColor(srgbRed: 0.25, green: 0.25, blue: 0.25, alpha: 0.85)
     // A hair off pure white reads as more "retro" than a flat white fill.
     private static let fillColor = NSColor(srgbRed: 0.9, green: 0.9, blue: 0.9, alpha: 1.0)
-    // Was 0.72 — only an 0.18 gap from fillColor's 0.9, which read as
-    // barely-there next to a real Snow Leopard screenshot (the selected
-    // segment there is unmistakably darker/pressed-looking). Widened the
-    // gap substantially so the selected state is obvious at a glance
-    // without needing to add any new chrome.
-    private static let selectedFillColor = NSColor(srgbRed: 0.45, green: 0.45, blue: 0.45, alpha: 1.0)
-    private static let selectedInnerShadowColor = NSColor(srgbRed: 0.3, green: 0.3, blue: 0.3, alpha: 1.0)
+    // Was 0.72 (too subtle) then 0.45 (too dark — black text on it read
+    // as low-contrast/hard to read). 0.6 keeps a clear, obvious gap from
+    // fillColor's 0.9 while leaving the dark text legible.
+    private static let selectedFillColor = NSColor(srgbRed: 0.6, green: 0.6, blue: 0.6, alpha: 1.0)
+    private static let selectedInnerShadowColor = NSColor(srgbRed: 0.45, green: 0.45, blue: 0.45, alpha: 1.0)
     private static let dividerColor = NSColor(srgbRed: 0.72, green: 0.72, blue: 0.72, alpha: 1.0)
     private static let textColor = NSColor(srgbRed: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)
     private static let disabledTextColor = NSColor(srgbRed: 0.1, green: 0.1, blue: 0.1, alpha: 0.35)
