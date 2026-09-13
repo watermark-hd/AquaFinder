@@ -11,6 +11,7 @@ Mac OS X 10.4〜10.6（Tiger〜Snow Leopard）時代のFinderの雰囲気を再�
 ### 主な機能
 
 - アイコン表示・リスト表示・カラム表示
+- 「上の階層に移動」（⌘U）：選択中のファイルを、カラム表示に切り替えたり2つのウィンドウでドラッグしたりせずに、直接親フォルダへ移動
 - 複数ウィンドウ対応、ファイルのコピー＆ペースト（⌘C / ⌘V）
 - リスト表示でフォルダのサイズを自動計算して表示
 - テーマ切り替え：10.6風グラファイト／10.4風ブラッシュドメタル
@@ -57,6 +58,7 @@ A personal recreation of the classic Mac OS X Finder from the Tiger–Snow Leopa
 ### Features
 
 - Icon, List, and Column views
+- Move to Enclosing Folder (⌘U): move the selected file straight into its parent folder without switching to Column view or dragging between two windows
 - Multiple windows, and file copy & paste (⌘C / ⌘V)
 - Automatic folder size calculation shown in List view
 - Switchable themes: 10.6-style Graphite / 10.4-style Brushed Metal
