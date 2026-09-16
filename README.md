@@ -26,7 +26,7 @@ Mac OS X 10.4〜10.6（Tiger〜Snow Leopard）時代のFinderの雰囲気を再�
 
 ### インストール方法
 
-1. [Releases](../../releases) から最新の `AquaFinder.dmg` をダウンロード
+1. [Releases](../../releases) から最新の `AquaFinder.dmg` をダウンロード（上部の緑の「Code」ボタンはソースコードのみなので、そちらではありません）
 2. DMGを開き、`AquaFinder.app` を `Applications` フォルダにドラッグ
 3. 初回起動時、Appleに登録された開発者による署名ではないため「開発元が未確認のため開けません」という警告が出ます。その場合は次のいずれかで開いてください：
    - `AquaFinder.app` を **右クリック（またはControl+クリック）→「開く」** を選択し、表示されるダイアログで「開く」を選ぶ
@@ -73,7 +73,7 @@ A personal recreation of the classic Mac OS X Finder from the Tiger–Snow Leopa
 
 ### Installation
 
-1. Download the latest `AquaFinder.dmg` from [Releases](../../releases)
+1. Download the latest `AquaFinder.dmg` from [Releases](../../releases) &mdash; not the green "Code" button above, which only has the source
 2. Open the DMG and drag `AquaFinder.app` into `Applications`
 3. On first launch, macOS will likely show a warning that the developer cannot be verified, since this isn't signed by an Apple-registered developer. If so:
    - Right-click (or Control-click) `AquaFinder.app` → **Open**, then click **Open** in the dialog
