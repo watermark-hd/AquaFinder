@@ -13,7 +13,8 @@ public enum FileContextMenu {
         onCompress: @escaping () -> Void,
         onMoveToTrash: @escaping () -> Void,
         onSetLabelColor: @escaping (LabelColor) -> Void,
-        onOpenInNewWindow: (() -> Void)? = nil
+        onOpenInNewWindow: (() -> Void)? = nil,
+        onMoveToEnclosingFolder: (() -> Void)? = nil
     ) -> [NSMenuItem] {
         var items: [NSMenuItem] = []
 
@@ -26,6 +27,12 @@ public enum FileContextMenu {
         }
         if let onRename {
             items.append(ClosureMenuItem(title: NSLocalizedString("Rename", comment: "右クリックメニュー: 名称変更"), handler: onRename))
+        }
+        if let onMoveToEnclosingFolder {
+            items.append(ClosureMenuItem(
+                title: NSLocalizedString("Move to Enclosing Folder", comment: "右クリックメニュー: 上の階層に移動"),
+                handler: onMoveToEnclosingFolder
+            ))
         }
         items.append(ClosureMenuItem(title: NSLocalizedString("Duplicate", comment: "右クリックメニュー: 複製"), handler: onDuplicate))
         let compressFormat = NSLocalizedString("Compress “%@”", comment: "右クリックメニュー: 圧縮（%@=ファイル名）")

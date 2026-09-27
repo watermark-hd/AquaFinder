@@ -17,6 +17,11 @@ public final class IconViewController: NSViewController {
     /// on a folder — MainWindowController delegates the actual window
     /// creation to AppDelegate.
     public var onOpenInNewWindow: ((FileItem) -> Void)?
+    /// Fired when "Move to Enclosing Folder" is chosen from the right-click
+    /// menu — actually performing the move is MainWindowController's job
+    /// (it already implements this for the File menu / ⌘U), this view just
+    /// reports the request after re-selecting the right-clicked item.
+    public var onMoveToEnclosingFolder: (() -> Void)?
     /// Fired on any selection change — MainWindowController uses this to
     /// keep an open Quick Look panel in sync without caring which view
     /// mode is actually active.
@@ -242,7 +247,8 @@ public final class IconViewController: NSViewController {
                 self?.reload()
                 self?.onFileSystemChange?()
             },
-            onOpenInNewWindow: { [weak self] in self?.onOpenInNewWindow?(fileItem) }
+            onOpenInNewWindow: { [weak self] in self?.onOpenInNewWindow?(fileItem) },
+            onMoveToEnclosingFolder: { [weak self] in self?.onMoveToEnclosingFolder?() }
         )
         menuItems.forEach { menu.addItem($0) }
         return menu

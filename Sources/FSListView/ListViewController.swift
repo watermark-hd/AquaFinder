@@ -1,6 +1,7 @@
 import AppKit
 import FSCore
 import FSUIKit
+import FSQuickLook
 
 /// Classic Finder's hierarchical List View: flat listing of the current
 /// folder, with disclosure triangles to peek into subfolders inline
@@ -23,6 +24,11 @@ public final class ListViewController: NSViewController {
     /// on a folder — MainWindowController delegates the actual window
     /// creation to AppDelegate.
     public var onOpenInNewWindow: ((FileItem) -> Void)?
+    /// Fired when "Move to Enclosing Folder" is chosen from the right-click
+    /// menu — actually performing the move is MainWindowController's job
+    /// (it already implements this for the File menu / ⌘U), this view just
+    /// reports the request after re-selecting the right-clicked row.
+    public var onMoveToEnclosingFolder: (() -> Void)?
     /// Fired on any selection change — MainWindowController uses this to
     /// keep an open Quick Look panel in sync without caring which view
     /// mode is actually active.
@@ -345,7 +351,8 @@ extension ListViewController: NSMenuDelegate {
                 self?.refresh()
                 self?.onFileSystemChange?()
             },
-            onOpenInNewWindow: { [weak self] in self?.onOpenInNewWindow?(fileItem) }
+            onOpenInNewWindow: { [weak self] in self?.onOpenInNewWindow?(fileItem) },
+            onMoveToEnclosingFolder: { [weak self] in self?.onMoveToEnclosingFolder?() }
         )
         items.forEach { menu.addItem($0) }
     }
@@ -503,6 +510,17 @@ extension ListViewController: NSOutlineViewDelegate, NSTextFieldDelegate {
             IconCache.icon(for: requestedURL) { [weak cell] image in
                 guard let nameCell = cell as? ListNameCell, nameCell.requestedIconURL == requestedURL else { return }
                 nameCell.imageView?.image = image
+            }
+            // Upgrades the generic per-UTI icon above to a real content
+            // thumbnail (actual image contents, PDF first page, etc.)
+            // once it's ready — same "placeholder, then upgrade" pattern
+            // Icon view already uses. List view previously never called
+            // this at all, so image files showed only a blank/generic
+            // icon here instead of a real preview.
+            let rowIconSize = textSize.rowIconSize
+            ThumbnailLoader.thumbnail(for: requestedURL, size: NSSize(width: rowIconSize, height: rowIconSize), scale: 2) { [weak cell] thumbnail in
+                guard let nameCell = cell as? ListNameCell, nameCell.requestedIconURL == requestedURL else { return }
+                nameCell.imageView?.image = thumbnail
             }
             if let labelDot = cell.viewWithTag(Self.labelDotTag) as? NSImageView {
                 let color = fileItem.labelColor

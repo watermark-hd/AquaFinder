@@ -280,6 +280,10 @@ public final class MainWindowController: NSWindowController {
         listVC.onOpenInNewWindow = { [weak self] fileItem in self?.openInNewWindow(fileItem.url) }
         iconVC.onOpenInNewWindow = { [weak self] fileItem in self?.openInNewWindow(fileItem.url) }
 
+        columnVC.onMoveToEnclosingFolder = { [weak self] in self?.moveSelectionToEnclosingFolder(nil) }
+        listVC.onMoveToEnclosingFolder = { [weak self] in self?.moveSelectionToEnclosingFolder(nil) }
+        iconVC.onMoveToEnclosingFolder = { [weak self] in self?.moveSelectionToEnclosingFolder(nil) }
+
         listVC.onSelectionChange = { [weak self] in self?.quickLookSelectionDidChange() }
         iconVC.onSelectionChange = { [weak self] in self?.quickLookSelectionDidChange() }
 

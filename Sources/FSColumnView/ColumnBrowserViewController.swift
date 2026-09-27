@@ -1,6 +1,7 @@
 import AppKit
 import FSCore
 import FSUIKit
+import FSQuickLook
 
 /// Classic Finder's Miller-column view, backed by NSBrowser — the same
 /// control real Finder still uses for column view today. Uses the
@@ -19,6 +20,12 @@ public final class ColumnBrowserViewController: NSViewController {
     /// Fired when "Open in New Window" is chosen from the right-click menu
     /// on a folder (matches List/Icon).
     public var onOpenInNewWindow: ((FileItem) -> Void)?
+    /// Fired when "Move to Enclosing Folder" is chosen from the right-click
+    /// menu — actually performing the move is MainWindowController's job
+    /// (it already implements this for the File menu / ⌘U), this view just
+    /// reports the request after re-selecting the right-clicked row
+    /// (matches List/Icon).
+    public var onMoveToEnclosingFolder: (() -> Void)?
 
     private let browser = ContextMenuBrowser()
     private var currentRoot: FileItem
@@ -244,7 +251,8 @@ public final class ColumnBrowserViewController: NSViewController {
                 }
                 self?.reloadAfterChange(toParentOf: fileItem, inColumn: column)
             },
-            onOpenInNewWindow: { [weak self] in self?.onOpenInNewWindow?(fileItem) }
+            onOpenInNewWindow: { [weak self] in self?.onOpenInNewWindow?(fileItem) },
+            onMoveToEnclosingFolder: { [weak self] in self?.onMoveToEnclosingFolder?() }
         )
         items.forEach { menu.addItem($0) }
         return menu
@@ -296,6 +304,13 @@ final class FileBrowserCell: NSBrowserCell {
     /// never moved with the text-size preference until this was added.
     static var font: NSFont = NSFont.systemFont(ofSize: AppearancePreferenceStore.textSize.baseFontSize)
 
+    // NSBrowser reuses cell instances per row position with no
+    // reuse-callback hook of its own (same story as List view's
+    // ListNameCell) — this is what a delayed ThumbnailLoader completion
+    // below checks against to avoid painting a since-recycled cell with
+    // a different file's thumbnail.
+    private var requestedIconURL: URL?
+
     override var objectValue: Any? {
         get { super.objectValue }
         set {
@@ -304,15 +319,27 @@ final class FileBrowserCell: NSBrowserCell {
                 return
             }
             font = Self.font
+            let requestedURL = fileItem.url
+            requestedIconURL = requestedURL
             // IconCache hands back a shared instance reused by every other
             // view; resizing it in place would shrink it everywhere else
             // too. NSBrowserCell also draws `image` at its own reported
             // size rather than scaling to fit the cell (unlike NSImageView
             // elsewhere in the app), so a resized copy is what actually
             // keeps the icon from overflowing the row.
-            let icon = IconCache.icon(for: fileItem.url).copy() as? NSImage
+            let icon = IconCache.icon(for: requestedURL).copy() as? NSImage
             icon?.size = NSSize(width: Self.iconSize, height: Self.iconSize)
             image = icon
+            // Upgrades the generic per-UTI icon above to a real content
+            // thumbnail (actual image contents, PDF first page, etc.)
+            // once it's ready — same "placeholder, then upgrade" pattern
+            // Icon view already uses. Column view previously never called
+            // this at all, so image files showed only a blank/generic
+            // icon here instead of a real preview.
+            ThumbnailLoader.thumbnail(for: requestedURL, size: NSSize(width: Self.iconSize, height: Self.iconSize), scale: 2) { [weak self] thumbnail in
+                guard let self, self.requestedIconURL == requestedURL else { return }
+                self.image = thumbnail
+            }
             // NSCell's `image` setter switches the cell's `type` to
             // `.imageCellType` as a side effect (documented Apple
             // behavior). Left alone, that broke the rename field editor —

@@ -27,8 +27,8 @@ let package = Package(
             ]
         ),
         .target(name: "FSSidebar", dependencies: ["FSCore", "FSUIKit"]),
-        .target(name: "FSColumnView", dependencies: ["FSCore", "FSUIKit"]),
-        .target(name: "FSListView", dependencies: ["FSCore", "FSUIKit"]),
+        .target(name: "FSColumnView", dependencies: ["FSCore", "FSUIKit", "FSQuickLook"]),
+        .target(name: "FSListView", dependencies: ["FSCore", "FSUIKit", "FSQuickLook"]),
         .target(name: "FSIconView", dependencies: ["FSCore", "FSUIKit", "FSQuickLook"]),
         .target(name: "FSGetInfo", dependencies: ["FSCore", "FSUIKit"]),
         .target(
