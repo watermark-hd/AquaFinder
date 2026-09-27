@@ -8,6 +8,18 @@ import Foundation
 /// 削減する。
 public enum DirectoryListingCache {
     private static var cache: [URL: [FileItem]] = [:]
+    // Every current call site only ever touches `cache` from the main
+    // thread, but a real crash (EXC_BREAKPOINT / pointer-authentication
+    // trap inside a Dictionary removeValue on the main thread, double-
+    // clicking a row in List view) showed signs of the dictionary's
+    // storage being corrupted — the signature of concurrent, unsynchronized
+    // mutation even though no live second thread could be pinned down by
+    // inspection. A plain `[URL: [FileItem]]` gives no protection if one
+    // ever turns up (a future background call site, a mis-dispatched
+    // completion, etc.), so every access now goes through this lock —
+    // cheap uncontended, and it directly hardens the exact mechanism that
+    // crashed.
+    private static let lock = NSLock()
 
     /// FSCore doesn't depend on FSUIKit, so it can't call `IconCache`
     /// directly — the app wires this up once at launch instead (see
@@ -18,12 +30,17 @@ public enum DirectoryListingCache {
     public static var onNewListing: (([FileItem]) -> Void)?
 
     public static func contents(of directoryURL: URL) -> [FileItem] {
-        if let cached = cache[directoryURL] {
-            onNewListing?(cached)
-            return cached
+        lock.lock()
+        let cachedNow = cache[directoryURL]
+        lock.unlock()
+        if let cachedNow {
+            onNewListing?(cachedNow)
+            return cachedNow
         }
         let result = FileListing.contents(of: directoryURL)
+        lock.lock()
         cache[directoryURL] = result
+        lock.unlock()
         onNewListing?(result)
         return result
     }
@@ -43,9 +60,12 @@ public enum DirectoryListingCache {
     /// as instant as it did before, not gain an artificial round trip
     /// through the background queue.
     public static func contents(of directoryURL: URL, completion: @escaping ([FileItem]) -> Void) {
-        if let cached = cache[directoryURL] {
-            onNewListing?(cached)
-            completion(cached)
+        lock.lock()
+        let cachedNow = cache[directoryURL]
+        lock.unlock()
+        if let cachedNow {
+            onNewListing?(cachedNow)
+            completion(cachedNow)
             return
         }
         DispatchQueue.global(qos: .userInitiated).async {
@@ -56,8 +76,10 @@ public enum DirectoryListingCache {
                 // running — prefer whatever's already cached so concurrent
                 // callers converge on one shared value instead of each
                 // silently overwriting the other's.
+                lock.lock()
                 let resolved = cache[directoryURL] ?? result
                 cache[directoryURL] = resolved
+                lock.unlock()
                 onNewListing?(resolved)
                 completion(resolved)
             }
@@ -65,10 +87,14 @@ public enum DirectoryListingCache {
     }
 
     public static func invalidate(_ directoryURL: URL) {
+        lock.lock()
         cache.removeValue(forKey: directoryURL)
+        lock.unlock()
     }
 
     public static func invalidateAll() {
+        lock.lock()
         cache.removeAll()
+        lock.unlock()
     }
 }
