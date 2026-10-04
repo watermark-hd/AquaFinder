@@ -36,5 +36,7 @@ let package = Package(
             dependencies: ["FSCore", "FSUIKit", "FSSidebar", "FSColumnView", "FSListView", "FSIconView", "FSGetInfo"]
         ),
         .executableTarget(name: "AquaFinderApp", dependencies: ["FSWindow"]),
+        .executableTarget(name: "StabilityProbe", dependencies: ["FSCore", "FSUIKit", "FSQuickLook"]),
+        .testTarget(name: "FSCoreTests", dependencies: ["FSCore"]),
     ]
 )

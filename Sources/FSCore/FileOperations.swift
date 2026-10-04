@@ -1,6 +1,6 @@
 import Foundation
 
-public enum FileOperationError: Error, LocalizedError {
+public enum FileOperationError: Error, LocalizedError, Equatable {
     case invalidName
     case destinationExists
     case compressFailed

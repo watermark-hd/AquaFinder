@@ -8,6 +8,15 @@ import QuickLookThumbnailing
 /// generic icon as a placeholder and swap it out when `completion` fires.
 public enum ThumbnailLoader {
     private static var cache: [URL: NSImage] = [:]
+    // Same hazard DirectoryListingCache had (see its own doc comment): a
+    // plain dictionary written to from inside an async completion handler.
+    // The write below is correctly hopped to the main thread already, but
+    // QLThumbnailGenerator's completion queue isn't contractually
+    // guaranteed, and this cache is now read from three view controllers'
+    // cell-configuration paths (Icon/List/Column) instead of just one —
+    // cheap insurance against the same corrupted-pointer crash recurring
+    // here instead.
+    private static let lock = NSLock()
 
     /// Returns the underlying request so the caller can cancel it (see
     /// `cancel(_:)`) if the item it was for gets recycled before it
@@ -15,8 +24,11 @@ public enum ThumbnailLoader {
     /// nothing in flight to cancel.
     @discardableResult
     public static func thumbnail(for url: URL, size: CGSize, scale: CGFloat, completion: @escaping (NSImage) -> Void) -> QLThumbnailGenerator.Request? {
-        if let cached = cache[url] {
-            completion(cached)
+        lock.lock()
+        let cachedNow = cache[url]
+        lock.unlock()
+        if let cachedNow {
+            completion(cachedNow)
             return nil
         }
         let request = QLThumbnailGenerator.Request(
@@ -38,7 +50,9 @@ public enum ThumbnailLoader {
             let imageSize = CGSize(width: CGFloat(cgImage.width) / scale, height: CGFloat(cgImage.height) / scale)
             let image = NSImage(cgImage: cgImage, size: imageSize)
             DispatchQueue.main.async {
+                lock.lock()
                 cache[url] = image
+                lock.unlock()
                 completion(image)
             }
         }

@@ -1,0 +1,27 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build-and-test:
+    # macos-14 runners ship a full Xcode install (unlike this project's own
+    # dev machine, which only has the Command Line Tools and so can't run
+    # `swift test` locally at all — XCTest.framework isn't part of CLT).
+    # This is deliberately the only place these tests actually run.
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build
+        run: swift build
+
+      - name: Run tests
+        run: swift test
