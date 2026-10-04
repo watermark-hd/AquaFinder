@@ -63,7 +63,7 @@
 
 /* サーバへ接続ダイアログ */
 "Connect to Server" = "サーバへ接続";
-"Enter the server address." = "サーバのアドレスを入力してください。";
+"Enter the server address (SMB, AFP, NFS, WebDAV, etc.)." = "サーバのアドレスを入力してください（SMB、AFP、NFS、WebDAVなど）。";
 "Connect" = "接続";
 "Cancel" = "キャンセル";
 "That doesn’t look like a server address (e.g. smb://server/share)." = "サーバのアドレスとして認識できません（例: smb://server/share）。";

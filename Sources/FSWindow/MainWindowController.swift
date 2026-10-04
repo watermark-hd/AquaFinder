@@ -1145,11 +1145,17 @@ public final class MainWindowController: NSWindowController {
         guard let window else { return }
         let alert = NSAlert()
         alert.messageText = NSLocalizedString("Connect to Server", comment: "サーバへ接続ダイアログのタイトル")
+        // NetFSMountURLSync (ServerConnection.connect(to:)) dispatches by
+        // the address's own URL scheme — it was never actually SMB-only,
+        // just the copy here implied that. Still naming FTP explicitly
+        // would be misleading: macOS itself dropped FTP from its own
+        // Connect to Server years ago, so it's unlikely to mount here
+        // either.
         alert.informativeText = NSLocalizedString(
-            "Enter the server address.", comment: "サーバへ接続ダイアログの説明"
+            "Enter the server address (SMB, AFP, NFS, WebDAV, etc.).", comment: "サーバへ接続ダイアログの説明"
         )
         let addressField = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 22))
-        addressField.placeholderString = "smb://server/share"
+        addressField.placeholderString = "smb://, afp://, nfs://…"
         alert.accessoryView = addressField
         alert.window.initialFirstResponder = addressField
         alert.addButton(withTitle: NSLocalizedString("Connect", comment: "サーバへ接続ダイアログ: 接続ボタン"))
