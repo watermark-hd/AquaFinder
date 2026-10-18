@@ -7,6 +7,7 @@ import FSColumnView
 import FSListView
 import FSIconView
 import FSGetInfo
+import FSTransferProgress
 
 public final class MainWindowController: NSWindowController {
     // FSCore (DirectoryListingCache) doesn't depend on FSUIKit (IconCache),
@@ -271,6 +272,10 @@ public final class MainWindowController: NSWindowController {
         listVC.onFileSystemChange = { [weak self] in self?.refreshAllViews() }
         iconVC.onFileSystemChange = { [weak self] in self?.refreshAllViews() }
         sidebarVC.onFileSystemChange = { [weak self] in self?.refreshAllViews() }
+
+        listVC.onTransferRequested = { [weak self] items, destination in self?.performTransfer(items, into: destination) }
+        iconVC.onTransferRequested = { [weak self] items, destination in self?.performTransfer(items, into: destination) }
+        sidebarVC.onTransferRequested = { [weak self] items, destination in self?.performTransfer(items, into: destination) }
 
         columnVC.onShowInfo = { [weak self] fileItem in self?.showGetInfo(for: fileItem) }
         listVC.onShowInfo = { [weak self] fileItem in self?.showGetInfo(for: fileItem) }
@@ -1222,29 +1227,34 @@ public final class MainWindowController: NSWindowController {
         let sourceURLs = FilePasteboard.readURLs()
         guard !sourceURLs.isEmpty else { return }
         let destinationDirectory = activeBrowser.currentDirectoryURL
-        var pastedURLs: [URL] = []
-        for sourceURL in sourceURLs {
-            if let pastedURL = try? FileOperations.copy(sourceURL, into: destinationDirectory) {
-                pastedURLs.append(pastedURL)
-            }
+        let items = sourceURLs.map { (url: $0, kind: DragOperationKind.copy) }
+        TransferCoordinator.perform(items, into: destinationDirectory) { [weak self] pastedURLs in
+            guard let self, !pastedURLs.isEmpty else { return }
+            self.refreshAllViews()
+            self.registerUndo(
+                actionName: NSLocalizedString("Paste", comment: "取り消し操作名: 貼り付け"),
+                undo: { [weak self] in
+                    for url in pastedURLs {
+                        _ = try? FileOperations.moveToTrash(url)
+                    }
+                    self?.refreshAllViews()
+                },
+                redo: { [weak self] in
+                    TransferCoordinator.perform(items, into: destinationDirectory) { _ in
+                        self?.refreshAllViews()
+                    }
+                }
+            )
         }
-        guard !pastedURLs.isEmpty else { return }
-        refreshAllViews()
-        registerUndo(
-            actionName: NSLocalizedString("Paste", comment: "取り消し操作名: 貼り付け"),
-            undo: { [weak self] in
-                for url in pastedURLs {
-                    _ = try? FileOperations.moveToTrash(url)
-                }
-                self?.refreshAllViews()
-            },
-            redo: { [weak self] in
-                for sourceURL in sourceURLs {
-                    _ = try? FileOperations.copy(sourceURL, into: destinationDirectory)
-                }
-                self?.refreshAllViews()
-            }
-        )
+    }
+
+    /// Shared by List/Icon/Sidebar's drag-and-drop — see each view's
+    /// `onTransferRequested` doc comment for why this lives here instead
+    /// of each view performing its own copy/move synchronously.
+    private func performTransfer(_ items: [(url: URL, kind: DragOperationKind)], into destinationDirectory: URL) {
+        TransferCoordinator.perform(items, into: destinationDirectory) { [weak self] _ in
+            self?.refreshAllViews()
+        }
     }
 
     // MARK: - Open in New Window

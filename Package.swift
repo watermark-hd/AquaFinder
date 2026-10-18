@@ -31,9 +31,13 @@ let package = Package(
         .target(name: "FSListView", dependencies: ["FSCore", "FSUIKit", "FSQuickLook"]),
         .target(name: "FSIconView", dependencies: ["FSCore", "FSUIKit", "FSQuickLook"]),
         .target(name: "FSGetInfo", dependencies: ["FSCore", "FSUIKit"]),
+        .target(name: "FSTransferProgress", dependencies: ["FSCore", "FSUIKit"]),
         .target(
             name: "FSWindow",
-            dependencies: ["FSCore", "FSUIKit", "FSSidebar", "FSColumnView", "FSListView", "FSIconView", "FSGetInfo"]
+            dependencies: [
+                "FSCore", "FSUIKit", "FSSidebar", "FSColumnView", "FSListView", "FSIconView", "FSGetInfo",
+                "FSTransferProgress",
+            ]
         ),
         .executableTarget(name: "AquaFinderApp", dependencies: ["FSWindow"]),
         .executableTarget(name: "StabilityProbe", dependencies: ["FSCore", "FSUIKit", "FSQuickLook"]),

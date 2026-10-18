@@ -29,6 +29,11 @@ public final class ListViewController: NSViewController {
     /// (it already implements this for the File menu / ⌘U), this view just
     /// reports the request after re-selecting the right-clicked row.
     public var onMoveToEnclosingFolder: (() -> Void)?
+    /// Fired instead of performing a drag-and-drop copy/move synchronously
+    /// — MainWindowController owns showing progress for transfers that
+    /// take a while (see `TransferCoordinator`), and calls `refresh()` /
+    /// `onFileSystemChange?()` itself once the batch finishes.
+    public var onTransferRequested: (([(url: URL, kind: DragOperationKind)], URL) -> Void)?
     /// Fired on any selection change — MainWindowController uses this to
     /// keep an open Quick Look panel in sync without caring which view
     /// mode is actually active.
@@ -422,14 +427,10 @@ extension ListViewController: NSOutlineViewDataSource {
         guard let sourceURLs = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL]
         else { return false }
 
-        for sourceURL in sourceURLs {
-            let operation = dragModifierTracker.resolve(source: sourceURL, destinationDirectory: destinationDirectory)
-            _ = try? (operation == .copy
-                ? FileOperations.copy(sourceURL, into: destinationDirectory)
-                : FileOperations.move(sourceURL, into: destinationDirectory))
+        let items = sourceURLs.map { sourceURL in
+            (url: sourceURL, kind: dragModifierTracker.resolve(source: sourceURL, destinationDirectory: destinationDirectory))
         }
-        refresh()
-        onFileSystemChange?()
+        onTransferRequested?(items, destinationDirectory)
         return true
     }
 }

@@ -120,6 +120,120 @@ public enum FileOperations {
         return destination
     }
 
+    /// Same as `copy(_:into:)`, but runs off the main thread and reports
+    /// real byte-level progress — large files (RAW photos, video) used to
+    /// copy synchronously on whatever thread called this, which in
+    /// practice was always the main thread (drag & drop, paste), freezing
+    /// the whole app with no feedback for as long as the copy took.
+    ///
+    /// Regular files are copied by hand in chunks, updating `Progress`
+    /// after every chunk — `FileManager.copyItem`'s own "current Progress"
+    /// publishing (the documented, no-manual-tracking-needed mechanism)
+    /// turned out not to report any intermediate progress for a single
+    /// large file in practice: the bar just sat empty for the whole
+    /// transfer and then the operation completed, which is worse than
+    /// having no bar at all for exactly the case (one big file) this
+    /// exists for. Directories still go through `FileManager.copyItem`
+    /// (correctly handles nested structure, resource forks, etc.) and so
+    /// still only report coarse 0%-then-done progress — a real gap, but a
+    /// much rarer/lower-stakes one than the single-huge-file case.
+    @discardableResult
+    public static func copyAsync(
+        _ url: URL, into destinationDirectory: URL, completion: @escaping (Result<URL, Error>) -> Void
+    ) -> Progress {
+        let proposed = destinationDirectory.appendingPathComponent(url.lastPathComponent)
+        let destination = uniqueURL(for: proposed, in: destinationDirectory)
+        let progress = Progress(totalUnitCount: 1)
+        progress.isCancellable = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result: Result<URL, Error>
+            do {
+                if isRegularFile(url) {
+                    try copyFileWithProgress(from: url, to: destination, progress: progress)
+                } else {
+                    try FileManager.default.copyItem(at: url, to: destination)
+                }
+                result = .success(destination)
+            } catch {
+                try? FileManager.default.removeItem(at: destination)
+                result = .failure(error)
+            }
+            DispatchQueue.main.async { completion(result) }
+        }
+        return progress
+    }
+
+    @discardableResult
+    public static func moveAsync(
+        _ url: URL, into destinationDirectory: URL, completion: @escaping (Result<URL, Error>) -> Void
+    ) -> Progress {
+        let proposed = destinationDirectory.appendingPathComponent(url.lastPathComponent)
+        let destination = uniqueURL(for: proposed, in: destinationDirectory)
+        let progress = Progress(totalUnitCount: 1)
+        progress.isCancellable = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result: Result<URL, Error>
+            do {
+                // A same-volume move is a near-instant rename — only a
+                // cross-volume move is actually a copy-then-delete under
+                // the hood, and only that case benefits from (or needs)
+                // chunked progress reporting.
+                let sameVolume = (try? url.resourceValues(forKeys: [.volumeURLKey]).volume)
+                    == (try? destinationDirectory.resourceValues(forKeys: [.volumeURLKey]).volume)
+                if sameVolume {
+                    try FileManager.default.moveItem(at: url, to: destination)
+                } else if isRegularFile(url) {
+                    try copyFileWithProgress(from: url, to: destination, progress: progress)
+                    try FileManager.default.removeItem(at: url)
+                } else {
+                    try FileManager.default.copyItem(at: url, to: destination)
+                    try FileManager.default.removeItem(at: url)
+                }
+                result = .success(destination)
+            } catch {
+                try? FileManager.default.removeItem(at: destination)
+                result = .failure(error)
+            }
+            DispatchQueue.main.async { completion(result) }
+        }
+        return progress
+    }
+
+    private static func isRegularFile(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) ?? false
+    }
+
+    /// Reads/writes in fixed-size chunks so `progress.completedUnitCount`
+    /// reflects real bytes transferred, instead of jumping straight from
+    /// 0% to 100% the way a single whole-file `FileManager.copyItem` call
+    /// does from the caller's perspective. Checked for cancellation
+    /// between chunks — coarser than mid-chunk, but a 4MB chunk is a few
+    /// milliseconds even on a slow link, which is plenty responsive for a
+    /// Stop button.
+    private static func copyFileWithProgress(from source: URL, to destination: URL, progress: Progress) throws {
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: source.path)[.size] as? Int64) ?? nil
+        progress.totalUnitCount = max(fileSize ?? 1, 1)
+
+        guard FileManager.default.createFile(atPath: destination.path, contents: nil) else {
+            throw FileOperationError.destinationExists
+        }
+        let input = try FileHandle(forReadingFrom: source)
+        defer { try? input.close() }
+        let output = try FileHandle(forWritingTo: destination)
+        defer { try? output.close() }
+
+        let chunkSize = 4 * 1024 * 1024
+        while true {
+            if progress.isCancelled {
+                throw CocoaError(.userCancelled)
+            }
+            let chunk = input.readData(ofLength: chunkSize)
+            if chunk.isEmpty { break }
+            output.write(chunk)
+            progress.completedUnitCount += Int64(chunk.count)
+        }
+    }
+
     /// Classic Finder drag semantics: same-volume drag defaults to a move,
     /// cross-volume defaults to a copy; ⌥ always forces copy, ⌘ always
     /// forces move.

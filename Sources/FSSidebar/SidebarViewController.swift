@@ -15,6 +15,11 @@ public final class SidebarViewController: NSViewController {
     /// the drag's *source* folder, so it can't refresh that pane itself;
     /// MainWindowController refreshes everything in response instead.
     public var onFileSystemChange: (() -> Void)?
+    /// Fired instead of performing a drag-and-drop copy/move synchronously
+    /// — MainWindowController owns showing progress for transfers that
+    /// take a while (see `TransferCoordinator`), and calls
+    /// `onFileSystemChange?()` itself once the batch finishes.
+    public var onTransferRequested: (([(url: URL, kind: DragOperationKind)], URL) -> Void)?
 
     private let outlineView = NSOutlineView()
     private let scrollView = NSScrollView()
@@ -244,13 +249,10 @@ extension SidebarViewController: NSOutlineViewDataSource {
               let sourceURLs = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL]
         else { return false }
 
-        for sourceURL in sourceURLs {
-            let operation = dragModifierTracker.resolve(source: sourceURL, destinationDirectory: destinationItem.url)
-            _ = try? (operation == .copy
-                ? FileOperations.copy(sourceURL, into: destinationItem.url)
-                : FileOperations.move(sourceURL, into: destinationItem.url))
+        let items = sourceURLs.map { sourceURL in
+            (url: sourceURL, kind: dragModifierTracker.resolve(source: sourceURL, destinationDirectory: destinationItem.url))
         }
-        onFileSystemChange?()
+        onTransferRequested?(items, destinationItem.url)
         return true
     }
 }

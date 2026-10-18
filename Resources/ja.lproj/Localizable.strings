@@ -141,3 +141,10 @@
 "Medium" = "中";
 "Large" = "大";
 "Reset Window Size to Default" = "ウィンドウサイズを既定に戻す";
+
+/* 転送進捗パネル */
+"Copying" = "コピー中";
+"Moving" = "移動中";
+"Stop" = "中止";
+"%d of %d items" = "%d / %d個の項目";
+/* "1 item" is shared with the status bar's existing key above. */
