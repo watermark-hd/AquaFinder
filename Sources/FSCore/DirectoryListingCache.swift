@@ -7,18 +7,20 @@ import Foundation
 /// いた。これを一箇所に集約し、体感の鈍さの主因だった重複ディスクI/Oを
 /// 削減する。
 public enum DirectoryListingCache {
-    private static var cache: [URL: [FileItem]] = [:]
-    // Every current call site only ever touches `cache` from the main
-    // thread, but a real crash (EXC_BREAKPOINT / pointer-authentication
-    // trap inside a Dictionary removeValue on the main thread, double-
-    // clicking a row in List view) showed signs of the dictionary's
-    // storage being corrupted — the signature of concurrent, unsynchronized
-    // mutation even though no live second thread could be pinned down by
-    // inspection. A plain `[URL: [FileItem]]` gives no protection if one
-    // ever turns up (a future background call site, a mis-dispatched
-    // completion, etc.), so every access now goes through this lock —
-    // cheap uncontended, and it directly hardens the exact mechanism that
-    // crashed.
+    // Keyed by the URL's own `.path` (a plain Swift String), not the URL
+    // itself. A real crash (EXC_BAD_ACCESS / ARM pointer-authentication
+    // failure) was observed *inside* Dictionary.removeValue — even though
+    // the removal was already NSLock-protected — with a stack trace
+    // showing the crash specifically inside the Objective-C bridging path
+    // (objc_msgSend/lookUpImpOrForward) a Dictionary keyed by `URL` goes
+    // through to copy/release the key during delete (URL bridges to NSURL
+    // for this). A lock only prevents *concurrent* corruption; it can't
+    // help if the corruption's actual mechanism is this bridging path
+    // itself misbehaving on this toolchain. String has no such bridging —
+    // its copy/release is pure Swift — so keying by `.path` sidesteps the
+    // exact code path that crashed, independent of whatever the deeper
+    // cause turns out to be.
+    private static var cache: [String: [FileItem]] = [:]
     private static let lock = NSLock()
 
     /// FSCore doesn't depend on FSUIKit, so it can't call `IconCache`
@@ -30,8 +32,9 @@ public enum DirectoryListingCache {
     public static var onNewListing: (([FileItem]) -> Void)?
 
     public static func contents(of directoryURL: URL) -> [FileItem] {
+        let key = directoryURL.path
         lock.lock()
-        let cachedNow = cache[directoryURL]
+        let cachedNow = cache[key]
         lock.unlock()
         if let cachedNow {
             onNewListing?(cachedNow)
@@ -39,7 +42,7 @@ public enum DirectoryListingCache {
         }
         let result = FileListing.contents(of: directoryURL)
         lock.lock()
-        cache[directoryURL] = result
+        cache[key] = result
         lock.unlock()
         onNewListing?(result)
         return result
@@ -60,8 +63,9 @@ public enum DirectoryListingCache {
     /// as instant as it did before, not gain an artificial round trip
     /// through the background queue.
     public static func contents(of directoryURL: URL, completion: @escaping ([FileItem]) -> Void) {
+        let key = directoryURL.path
         lock.lock()
-        let cachedNow = cache[directoryURL]
+        let cachedNow = cache[key]
         lock.unlock()
         if let cachedNow {
             onNewListing?(cachedNow)
@@ -77,8 +81,8 @@ public enum DirectoryListingCache {
                 // callers converge on one shared value instead of each
                 // silently overwriting the other's.
                 lock.lock()
-                let resolved = cache[directoryURL] ?? result
-                cache[directoryURL] = resolved
+                let resolved = cache[key] ?? result
+                cache[key] = resolved
                 lock.unlock()
                 onNewListing?(resolved)
                 completion(resolved)
@@ -88,7 +92,7 @@ public enum DirectoryListingCache {
 
     public static func invalidate(_ directoryURL: URL) {
         lock.lock()
-        cache.removeValue(forKey: directoryURL)
+        cache.removeValue(forKey: directoryURL.path)
         lock.unlock()
     }
 

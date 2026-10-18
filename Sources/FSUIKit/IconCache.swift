@@ -15,6 +15,20 @@ import AppKit
 /// safe under that kind of concurrent access.
 public enum IconCache {
     private static let cache = NSCache<NSString, NSImage>()
+    // A crash was observed inside `url.path`'s getter (EXC_BAD_ACCESS,
+    // objc_msgSend on what looked like a dangling/corrupted pointer)
+    // while `prefetch` iterated its background closure — the same general
+    // signature (a crash deep in URL/Foundation bridging under concurrent
+    // access) this app has hit before elsewhere this session. The actual
+    // root cause wasn't pinned down, but `prefetch` firing on every single
+    // navigation (via DirectoryListingCache.onNewListing) means multiple
+    // of its background closures can easily be mid-flight on different
+    // threads at once during fast repeated navigation — serializing all
+    // of this type's background work onto one queue removes that
+    // particular class of concurrent-access risk even without a confirmed
+    // root cause, matching how DirectoryListingCache/ThumbnailLoader were
+    // hardened earlier.
+    private static let backgroundQueue = DispatchQueue(label: "com.local.aquafinder.IconCache", qos: .userInitiated)
     // A generic icon lookup by UTI (not tied to any one file) is a cheap,
     // local operation — unlike icon(forFile:), it never has to touch the
     // filesystem the file itself lives on, so it stays fast even when
@@ -48,7 +62,7 @@ public enum IconCache {
             return
         }
         completion(genericIcon)
-        DispatchQueue.global(qos: .userInitiated).async {
+        backgroundQueue.async {
             let icon = NSWorkspace.shared.icon(forFile: url.path)
             DispatchQueue.main.async {
                 cache.setObject(icon, forKey: key)
@@ -66,7 +80,7 @@ public enum IconCache {
     /// safe to call redundantly, and `icon(for:)` still works correctly
     /// (just synchronously) for anything this hasn't gotten to yet.
     public static func prefetch(_ urls: [URL]) {
-        DispatchQueue.global(qos: .userInitiated).async {
+        backgroundQueue.async {
             for url in urls {
                 _ = icon(for: url)
             }
