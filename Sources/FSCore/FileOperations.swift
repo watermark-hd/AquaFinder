@@ -126,17 +126,14 @@ public enum FileOperations {
     /// practice was always the main thread (drag & drop, paste), freezing
     /// the whole app with no feedback for as long as the copy took.
     ///
-    /// Regular files are copied by hand in chunks, updating `Progress`
-    /// after every chunk — `FileManager.copyItem`'s own "current Progress"
-    /// publishing (the documented, no-manual-tracking-needed mechanism)
-    /// turned out not to report any intermediate progress for a single
-    /// large file in practice: the bar just sat empty for the whole
+    /// Both single files and directories are copied by hand in chunks,
+    /// updating `Progress` after every chunk — `FileManager.copyItem`'s
+    /// own "current Progress" publishing (the documented, no-manual-
+    /// tracking-needed mechanism) turned out not to report any
+    /// intermediate progress in practice, for a directory just as much as
+    /// for a single large file: the bar just sat empty for the whole
     /// transfer and then the operation completed, which is worse than
-    /// having no bar at all for exactly the case (one big file) this
-    /// exists for. Directories still go through `FileManager.copyItem`
-    /// (correctly handles nested structure, resource forks, etc.) and so
-    /// still only report coarse 0%-then-done progress — a real gap, but a
-    /// much rarer/lower-stakes one than the single-huge-file case.
+    /// having no bar at all.
     @discardableResult
     public static func copyAsync(
         _ url: URL, into destinationDirectory: URL, completion: @escaping (Result<URL, Error>) -> Void
@@ -149,9 +146,10 @@ public enum FileOperations {
             let result: Result<URL, Error>
             do {
                 if isRegularFile(url) {
+                    progress.totalUnitCount = fileSize(at: url)
                     try copyFileWithProgress(from: url, to: destination, progress: progress)
                 } else {
-                    try FileManager.default.copyItem(at: url, to: destination)
+                    try copyDirectoryWithProgress(from: url, to: destination, progress: progress)
                 }
                 result = .success(destination)
             } catch {
@@ -183,10 +181,11 @@ public enum FileOperations {
                 if sameVolume {
                     try FileManager.default.moveItem(at: url, to: destination)
                 } else if isRegularFile(url) {
+                    progress.totalUnitCount = fileSize(at: url)
                     try copyFileWithProgress(from: url, to: destination, progress: progress)
                     try FileManager.default.removeItem(at: url)
                 } else {
-                    try FileManager.default.copyItem(at: url, to: destination)
+                    try copyDirectoryWithProgress(from: url, to: destination, progress: progress)
                     try FileManager.default.removeItem(at: url)
                 }
                 result = .success(destination)
@@ -210,10 +209,12 @@ public enum FileOperations {
     /// between chunks — coarser than mid-chunk, but a 4MB chunk is a few
     /// milliseconds even on a slow link, which is plenty responsive for a
     /// Stop button.
+    ///
+    /// Expects `progress.totalUnitCount` to already reflect the full
+    /// amount of work the caller is tracking — a single file's own size
+    /// when called directly, or a whole directory tree's cumulative size
+    /// when called once per file from `copyDirectoryWithProgress`.
     private static func copyFileWithProgress(from source: URL, to destination: URL, progress: Progress) throws {
-        let fileSize = (try? FileManager.default.attributesOfItem(atPath: source.path)[.size] as? Int64) ?? nil
-        progress.totalUnitCount = max(fileSize ?? 1, 1)
-
         guard FileManager.default.createFile(atPath: destination.path, contents: nil) else {
             throw FileOperationError.destinationExists
         }
@@ -232,6 +233,66 @@ public enum FileOperations {
             output.write(chunk)
             progress.completedUnitCount += Int64(chunk.count)
         }
+    }
+
+    /// Recreates a directory tree at `destination`, copying every regular
+    /// file by hand (via `copyFileWithProgress`, sharing one `Progress`
+    /// across the whole tree) instead of handing the directory to
+    /// `FileManager.copyItem` — which, like the single-file case, never
+    /// actually reports intermediate progress for a directory copy either,
+    /// so the bar sat empty for the whole transfer regardless of file size.
+    /// Symlinks are recreated as-is (never followed/resolved); their
+    /// content doesn't count toward the progress total since there's
+    /// nothing to stream.
+    private static func copyDirectoryWithProgress(from source: URL, to destination: URL, progress: Progress) throws {
+        // `subpathsOfDirectory` returns plain relative-path strings built
+        // directly off `source.path`, unlike `FileManager.enumerator`'s
+        // URLs — which, under `/tmp` (a symlink to `/private/tmp`), come
+        // back with the *resolved* path, silently breaking a naive
+        // prefix-strip against `source.path` to recover each item's
+        // relative path. Appending the same relative string onto both
+        // `source` and `destination` keeps the two consistent regardless
+        // of any such resolution.
+        //
+        // Sorted shallowest-first so every directory is created before
+        // anything inside it is copied into it — the order the API
+        // actually returns entries in isn't documented, so this doesn't
+        // rely on it.
+        let subpaths = try FileManager.default.subpathsOfDirectory(atPath: source.path)
+            .sorted { $0.components(separatedBy: "/").count < $1.components(separatedBy: "/").count }
+
+        var totalSize: Int64 = 0
+        for subpath in subpaths {
+            let itemURL = source.appendingPathComponent(subpath)
+            let values = try? itemURL.resourceValues(forKeys: [.isRegularFileKey])
+            if values?.isRegularFile == true {
+                totalSize += fileSize(at: itemURL)
+            }
+        }
+        progress.totalUnitCount = max(totalSize, 1)
+
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+
+        for subpath in subpaths {
+            if progress.isCancelled {
+                throw CocoaError(.userCancelled)
+            }
+            let itemURL = source.appendingPathComponent(subpath)
+            let destinationItem = destination.appendingPathComponent(subpath)
+            let values = try? itemURL.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey])
+            if values?.isDirectory == true {
+                try FileManager.default.createDirectory(at: destinationItem, withIntermediateDirectories: true)
+            } else if values?.isSymbolicLink == true {
+                try FileManager.default.copyItem(at: itemURL, to: destinationItem)
+            } else {
+                try copyFileWithProgress(from: itemURL, to: destinationItem, progress: progress)
+            }
+        }
+    }
+
+    private static func fileSize(at url: URL) -> Int64 {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        return (attributes?[.size] as? NSNumber)?.int64Value ?? 1
     }
 
     /// Classic Finder drag semantics: same-volume drag defaults to a move,
