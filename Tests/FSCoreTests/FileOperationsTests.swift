@@ -156,6 +156,89 @@ final class FileOperationsTests: XCTestCase {
         XCTAssertEqual(op, .move)
     }
 
+    // MARK: - copyAsync / moveAsync
+
+    func testCopyAsyncSingleFileReportsFullProgressAndCopiesContent() throws {
+        let destinationDir = tempDir.appendingPathComponent("dest", isDirectory: true)
+        try FileManager.default.createDirectory(at: destinationDir, withIntermediateDirectories: true)
+        let source = try makeFile("a.txt", contents: "hello world")
+
+        let expectation = expectation(description: "copy completes")
+        var resultURL: URL?
+        let progress = FileOperations.copyAsync(source, into: destinationDir) { result in
+            if case .success(let url) = result { resultURL = url }
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 5)
+
+        XCTAssertEqual(progress.completedUnitCount, progress.totalUnitCount)
+        XCTAssertEqual(try String(contentsOf: XCTUnwrap(resultURL), encoding: .utf8), "hello world")
+        // The source must still exist — copy, unlike move, shouldn't remove it.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+    }
+
+    func testCopyAsyncDirectoryReportsFullProgressAndCopiesNestedContent() throws {
+        let destinationDir = tempDir.appendingPathComponent("dest", isDirectory: true)
+        try FileManager.default.createDirectory(at: destinationDir, withIntermediateDirectories: true)
+        let sourceDir = tempDir.appendingPathComponent("folder", isDirectory: true)
+        let nestedDir = sourceDir.appendingPathComponent("nested", isDirectory: true)
+        try FileManager.default.createDirectory(at: nestedDir, withIntermediateDirectories: true)
+        try makeFile("top.txt", in: sourceDir, contents: "top level")
+        try makeFile("inner.txt", in: nestedDir, contents: "nested file")
+        // Created via the POSIX-path API with a bare relative target
+        // ("top.txt", not an absolute URL) — the same relative-symlink
+        // shape a real Finder-style drag of this folder would carry,
+        // and the thing actually worth verifying survives the copy
+        // unresolved rather than getting silently absolutized.
+        try FileManager.default.createSymbolicLink(
+            atPath: sourceDir.appendingPathComponent("link.txt").path, withDestinationPath: "top.txt"
+        )
+
+        let expectation = expectation(description: "directory copy completes")
+        var resultURL: URL?
+        let progress = FileOperations.copyAsync(sourceDir, into: destinationDir) { result in
+            if case .success(let url) = result { resultURL = url }
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 5)
+
+        let copiedDir = try XCTUnwrap(resultURL)
+        XCTAssertEqual(progress.completedUnitCount, progress.totalUnitCount)
+        // "top level" (9 bytes) + "nested file" (11 bytes) — the symlink itself
+        // doesn't stream any bytes, so it shouldn't count toward the total.
+        XCTAssertEqual(progress.totalUnitCount, 20)
+        XCTAssertEqual(
+            try String(contentsOf: copiedDir.appendingPathComponent("top.txt"), encoding: .utf8), "top level"
+        )
+        XCTAssertEqual(
+            try String(contentsOf: copiedDir.appendingPathComponent("nested/inner.txt"), encoding: .utf8),
+            "nested file"
+        )
+        let linkDestination = try FileManager.default.destinationOfSymbolicLink(
+            atPath: copiedDir.appendingPathComponent("link.txt").path
+        )
+        XCTAssertEqual(linkDestination, "top.txt")
+        // The source must still exist — copy, unlike move, shouldn't remove it.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sourceDir.path))
+    }
+
+    func testMoveAsyncSameVolumeRemovesSource() throws {
+        let destinationDir = tempDir.appendingPathComponent("dest", isDirectory: true)
+        try FileManager.default.createDirectory(at: destinationDir, withIntermediateDirectories: true)
+        let source = try makeFile("a.txt", contents: "move me")
+
+        let expectation = expectation(description: "move completes")
+        var resultURL: URL?
+        _ = FileOperations.moveAsync(source, into: destinationDir) { result in
+            if case .success(let url) = result { resultURL = url }
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 5)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertEqual(try String(contentsOf: XCTUnwrap(resultURL), encoding: .utf8), "move me")
+    }
+
     // MARK: - createNewFolder
 
     func testCreateNewFolderAvoidsCollision() throws {
