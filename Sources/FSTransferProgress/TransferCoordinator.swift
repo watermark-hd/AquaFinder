@@ -22,6 +22,12 @@ public final class TransferCoordinator {
     private var currentProgress: Progress?
     private var progressObservation: NSKeyValueObservation?
 
+    /// Guards against scheduling more than one pending main-thread UI
+    /// update at a time — see the comment at the KVO observation below for
+    /// why this exists.
+    private var isUIUpdateScheduled = false
+    private let uiUpdateLock = NSLock()
+
     private lazy var panel = TransferProgressWindowController(kind: items.first?.kind ?? .copy)
     private var panelShown = false
     private var showPanelWorkItem: DispatchWorkItem?
@@ -104,11 +110,33 @@ public final class TransferCoordinator {
             progress = FileOperations.moveAsync(item.url, into: destinationDirectory, completion: handleResult)
         }
         currentProgress = progress
+        // `copyFileWithProgress` updates `completedUnitCount` after every
+        // 4MB chunk, which on a fast internal SSD can fire far faster than
+        // the main thread can actually draw a frame — an earlier version
+        // of this unconditionally dispatched a new main-thread block per
+        // KVO firing, and a real 84GB copy backed up tens of thousands of
+        // those faster than AppKit could drain them, ballooning the app to
+        // 60+GB of resident memory and bringing down the whole system.
+        // Coalesce instead: at most one update is ever in flight, and
+        // because `progress` is a reference type, the block that finally
+        // runs always reads whatever the *current* fraction is at that
+        // point — never a stale value from when it was scheduled — so
+        // throttling the redraw rate doesn't throttle progress accuracy.
         progressObservation = progress.observe(\.fractionCompleted, options: [.new]) { [weak self] progress, _ in
+            guard let self else { return }
+            self.uiUpdateLock.lock()
+            let alreadyScheduled = self.isUIUpdateScheduled
+            self.isUIUpdateScheduled = true
+            self.uiUpdateLock.unlock()
+            guard !alreadyScheduled else { return }
+
             DispatchQueue.main.async {
-                self?.panel.update(
+                self.uiUpdateLock.lock()
+                self.isUIUpdateScheduled = false
+                self.uiUpdateLock.unlock()
+                self.panel.update(
                     icon: icon, itemName: item.url.lastPathComponent,
-                    completedCount: (self?.index ?? 0) + 1, totalCount: self?.items.count ?? 1,
+                    completedCount: self.index + 1, totalCount: self.items.count,
                     fraction: progress.fractionCompleted
                 )
             }
