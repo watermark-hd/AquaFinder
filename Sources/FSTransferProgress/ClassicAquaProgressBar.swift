@@ -46,10 +46,15 @@ public final class ClassicAquaProgressBar: NSView {
         // Classic Aqua blue glass: a mid-to-deep blue base gradient, with a
         // brighter glossy highlight band across the top third to read as a
         // rounded, reflective pill rather than a flat fill.
+        // A user who'd been running real Tiger/Panther-era Aqua compared
+        // this against the sidebar's own selection-highlight blue and
+        // found the original version of this too dark/navy by comparison
+        // — these stops are shifted lighter and more saturated to read
+        // closer to that reference blue.
         let baseGradient = NSGradient(colors: [
-            NSColor(srgbRed: 0.42, green: 0.64, blue: 0.97, alpha: 1.0),
-            NSColor(srgbRed: 0.18, green: 0.42, blue: 0.88, alpha: 1.0),
-            NSColor(srgbRed: 0.10, green: 0.32, blue: 0.80, alpha: 1.0),
+            NSColor(srgbRed: 0.50, green: 0.72, blue: 1.00, alpha: 1.0),
+            NSColor(srgbRed: 0.25, green: 0.55, blue: 0.98, alpha: 1.0),
+            NSColor(srgbRed: 0.15, green: 0.42, blue: 0.90, alpha: 1.0),
         ])
         baseGradient?.draw(in: fillRect, angle: 90)
 
